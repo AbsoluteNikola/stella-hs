@@ -1,0 +1,53 @@
+cabal-version:      3.4
+name:               stella-hs
+version:            0.1.0.0
+license:            MIT
+license-file:       LICENSE
+author:             Nikolay Rulev
+maintainer:         nikolayr2001@gmail.com
+-- copyright:
+category:           Language
+build-type:         Simple
+extra-source-files:
+    Syntax.cf
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:
+        Stella.Ast.AbsSyntax
+        Stella.Ast.PrintSyntax
+        Stella.Check.Trans
+    -- other-modules:
+    -- other-extensions:
+    build-depends:
+          base ^>=4.16.4.0
+        , text
+    hs-source-dirs:   src
+    default-language: GHC2021
+
+executable stella-hs
+    import:           warnings
+    main-is:          Main.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends:
+        base ^>=4.16.4.0,
+        stella-hs
+
+    hs-source-dirs:   exe
+    default-language: GHC2021
+
+test-suite stella-hs-test
+    import:           warnings
+    default-language: GHC2021
+    -- other-modules:
+    -- other-extensions:
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base ^>=4.16.4.0,
+        stella-hs
