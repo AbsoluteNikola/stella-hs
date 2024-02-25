@@ -23,8 +23,8 @@ library
     -- other-modules:
     -- other-extensions:
     build-depends:
-          base ^>=4.16.4.0
-        , text
+        base ^>=4.16.4.0,
+        text
     hs-source-dirs:   src
     default-language: GHC2021
 
@@ -50,4 +50,8 @@ test-suite stella-hs-test
     main-is:          Main.hs
     build-depends:
         base ^>=4.16.4.0,
-        stella-hs
+        stella-hs,
+        directory,
+        text,
+        tasty,
+        tasty-hunit
