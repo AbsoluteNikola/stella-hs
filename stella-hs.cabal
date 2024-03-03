@@ -19,6 +19,7 @@ common common-setup
         DuplicateRecordFields
         OverloadedRecordDot
         LambdaCase
+        OverloadedStrings
 
 library
     import:           common-setup
@@ -30,14 +31,17 @@ library
         Stella.Check.Trans
         Stella.Check.Errors
         Stella.Check.Types
+        Stella.Check.Env
     build-tool-depends:
         alex:alex,
         happy:happy
     build-depends:
         base ^>=4.16.4.0,
         text,
-        array
-        -- containers,
+        array,
+        containers,
+        transformers,
+        mtl
     hs-source-dirs:   src
     default-language: GHC2021
 
