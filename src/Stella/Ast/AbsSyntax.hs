@@ -2,175 +2,208 @@
 
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 -- | The abstract syntax of language Syntax.
 
 module Stella.Ast.AbsSyntax where
 
 import Prelude (Integer)
-import qualified Prelude as C (Eq, Ord, Show, Read)
+import qualified Prelude as C
+  ( Eq, Ord, Show, Read
+  , Functor, Foldable, Traversable
+  , Int, Maybe(..)
+  )
 import qualified Data.String
 
 import qualified Data.Text
 import qualified Data.Data    as C (Data, Typeable)
 import qualified GHC.Generics as C (Generic)
 
-data Program = AProgram LanguageDecl [Extension] [Decl]
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Program = Program' BNFC'Position
+data Program' a
+    = AProgram a (LanguageDecl' a) [Extension' a] [Decl' a]
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data LanguageDecl = LanguageCore
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type LanguageDecl = LanguageDecl' BNFC'Position
+data LanguageDecl' a = LanguageCore a
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Extension = AnExtension [ExtensionName]
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Extension = Extension' BNFC'Position
+data Extension' a = AnExtension a [ExtensionName]
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Decl
-    = DeclFun [Annotation] StellaIdent [ParamDecl] ReturnType ThrowType [Decl] Expr
-    | DeclFunGeneric [Annotation] StellaIdent [StellaIdent] [ParamDecl] ReturnType ThrowType [Decl] Expr
-    | DeclTypeAlias StellaIdent Type
-    | DeclExceptionType Type
-    | DeclExceptionVariant StellaIdent Type
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Decl = Decl' BNFC'Position
+data Decl' a
+    = DeclFun a [Annotation' a] StellaIdent [ParamDecl' a] (ReturnType' a) (ThrowType' a) [Decl' a] (Expr' a)
+    | DeclFunGeneric a [Annotation' a] StellaIdent [StellaIdent] [ParamDecl' a] (ReturnType' a) (ThrowType' a) [Decl' a] (Expr' a)
+    | DeclTypeAlias a StellaIdent (Type' a)
+    | DeclExceptionType a (Type' a)
+    | DeclExceptionVariant a StellaIdent (Type' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data LocalDecl = ALocalDecl Decl
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type LocalDecl = LocalDecl' BNFC'Position
+data LocalDecl' a = ALocalDecl a (Decl' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Annotation = InlineAnnotation
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Annotation = Annotation' BNFC'Position
+data Annotation' a = InlineAnnotation a
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data ParamDecl = AParamDecl StellaIdent Type
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type ParamDecl = ParamDecl' BNFC'Position
+data ParamDecl' a = AParamDecl a StellaIdent (Type' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data ReturnType = NoReturnType | SomeReturnType Type
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type ReturnType = ReturnType' BNFC'Position
+data ReturnType' a = NoReturnType a | SomeReturnType a (Type' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data ThrowType = NoThrowType | SomeThrowType [Type]
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type ThrowType = ThrowType' BNFC'Position
+data ThrowType' a = NoThrowType a | SomeThrowType a [Type' a]
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Type
-    = TypeFun [Type] Type
-    | TypeForAll [StellaIdent] Type
-    | TypeRec StellaIdent Type
-    | TypeSum Type Type
-    | TypeTuple [Type]
-    | TypeRecord [RecordFieldType]
-    | TypeVariant [VariantFieldType]
-    | TypeList Type
-    | TypeBool
-    | TypeNat
-    | TypeUnit
-    | TypeTop
-    | TypeBottom
-    | TypeRef Type
-    | TypeVar StellaIdent
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Type = Type' BNFC'Position
+data Type' a
+    = TypeFun a [Type' a] (Type' a)
+    | TypeForAll a [StellaIdent] (Type' a)
+    | TypeRec a StellaIdent (Type' a)
+    | TypeSum a (Type' a) (Type' a)
+    | TypeTuple a [Type' a]
+    | TypeRecord a [RecordFieldType' a]
+    | TypeVariant a [VariantFieldType' a]
+    | TypeList a (Type' a)
+    | TypeBool a
+    | TypeNat a
+    | TypeUnit a
+    | TypeTop a
+    | TypeBottom a
+    | TypeRef a (Type' a)
+    | TypeVar a StellaIdent
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data MatchCase = AMatchCase Pattern Expr
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type MatchCase = MatchCase' BNFC'Position
+data MatchCase' a = AMatchCase a (Pattern' a) (Expr' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data OptionalTyping = NoTyping | SomeTyping Type
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type OptionalTyping = OptionalTyping' BNFC'Position
+data OptionalTyping' a = NoTyping a | SomeTyping a (Type' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data PatternData = NoPatternData | SomePatternData Pattern
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type PatternData = PatternData' BNFC'Position
+data PatternData' a
+    = NoPatternData a | SomePatternData a (Pattern' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data ExprData = NoExprData | SomeExprData Expr
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type ExprData = ExprData' BNFC'Position
+data ExprData' a = NoExprData a | SomeExprData a (Expr' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Pattern
-    = PatternVariant StellaIdent PatternData
-    | PatternInl Pattern
-    | PatternInr Pattern
-    | PatternTuple [Pattern]
-    | PatternRecord [LabelledPattern]
-    | PatternList [Pattern]
-    | PatternCons Pattern Pattern
-    | PatternFalse
-    | PatternTrue
-    | PatternUnit
-    | PatternInt Integer
-    | PatternSucc Pattern
-    | PatternVar StellaIdent
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Pattern = Pattern' BNFC'Position
+data Pattern' a
+    = PatternVariant a StellaIdent (PatternData' a)
+    | PatternInl a (Pattern' a)
+    | PatternInr a (Pattern' a)
+    | PatternTuple a [Pattern' a]
+    | PatternRecord a [LabelledPattern' a]
+    | PatternList a [Pattern' a]
+    | PatternCons a (Pattern' a) (Pattern' a)
+    | PatternFalse a
+    | PatternTrue a
+    | PatternUnit a
+    | PatternInt a Integer
+    | PatternSucc a (Pattern' a)
+    | PatternVar a StellaIdent
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data LabelledPattern = ALabelledPattern StellaIdent Pattern
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type LabelledPattern = LabelledPattern' BNFC'Position
+data LabelledPattern' a
+    = ALabelledPattern a StellaIdent (Pattern' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Binding = ABinding StellaIdent Expr
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Binding = Binding' BNFC'Position
+data Binding' a = ABinding a StellaIdent (Expr' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Expr
-    = Sequence Expr Expr
-    | Assign Expr Expr
-    | If Expr Expr Expr
-    | Let [PatternBinding] Expr
-    | LetRec [PatternBinding] Expr
-    | TypeAbstraction [StellaIdent] Expr
-    | LessThan Expr Expr
-    | LessThanOrEqual Expr Expr
-    | GreaterThan Expr Expr
-    | GreaterThanOrEqual Expr Expr
-    | Equal Expr Expr
-    | NotEqual Expr Expr
-    | TypeAsc Expr Type
-    | TypeCast Expr Type
-    | Abstraction [ParamDecl] Expr
-    | Variant StellaIdent ExprData
-    | Match Expr [MatchCase]
-    | List [Expr]
-    | Add Expr Expr
-    | Subtract Expr Expr
-    | LogicOr Expr Expr
-    | Multiply Expr Expr
-    | Divide Expr Expr
-    | LogicAnd Expr Expr
-    | Ref Expr
-    | Deref Expr
-    | Application Expr [Expr]
-    | TypeApplication Expr [Type]
-    | DotRecord Expr StellaIdent
-    | DotTuple Expr Integer
-    | Tuple [Expr]
-    | Record [Binding]
-    | ConsList Expr Expr
-    | Head Expr
-    | IsEmpty Expr
-    | Tail Expr
-    | Panic
-    | Throw Expr
-    | TryCatch Expr Pattern Expr
-    | TryWith Expr Expr
-    | Inl Expr
-    | Inr Expr
-    | Succ Expr
-    | LogicNot Expr
-    | Pred Expr
-    | IsZero Expr
-    | Fix Expr
-    | NatRec Expr Expr Expr
-    | Fold Type Expr
-    | Unfold Type Expr
-    | ConstTrue
-    | ConstFalse
-    | ConstUnit
-    | ConstInt Integer
-    | ConstMemory MemoryAddress
-    | Var StellaIdent
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Expr = Expr' BNFC'Position
+data Expr' a
+    = Sequence a (Expr' a) (Expr' a)
+    | Assign a (Expr' a) (Expr' a)
+    | If a (Expr' a) (Expr' a) (Expr' a)
+    | Let a [PatternBinding' a] (Expr' a)
+    | LetRec a [PatternBinding' a] (Expr' a)
+    | TypeAbstraction a [StellaIdent] (Expr' a)
+    | LessThan a (Expr' a) (Expr' a)
+    | LessThanOrEqual a (Expr' a) (Expr' a)
+    | GreaterThan a (Expr' a) (Expr' a)
+    | GreaterThanOrEqual a (Expr' a) (Expr' a)
+    | Equal a (Expr' a) (Expr' a)
+    | NotEqual a (Expr' a) (Expr' a)
+    | TypeAsc a (Expr' a) (Type' a)
+    | TypeCast a (Expr' a) (Type' a)
+    | Abstraction a [ParamDecl' a] (Expr' a)
+    | Variant a StellaIdent (ExprData' a)
+    | Match a (Expr' a) [MatchCase' a]
+    | List a [Expr' a]
+    | Add a (Expr' a) (Expr' a)
+    | Subtract a (Expr' a) (Expr' a)
+    | LogicOr a (Expr' a) (Expr' a)
+    | Multiply a (Expr' a) (Expr' a)
+    | Divide a (Expr' a) (Expr' a)
+    | LogicAnd a (Expr' a) (Expr' a)
+    | Ref a (Expr' a)
+    | Deref a (Expr' a)
+    | Application a (Expr' a) [Expr' a]
+    | TypeApplication a (Expr' a) [Type' a]
+    | DotRecord a (Expr' a) StellaIdent
+    | DotTuple a (Expr' a) Integer
+    | Tuple a [Expr' a]
+    | Record a [Binding' a]
+    | ConsList a (Expr' a) (Expr' a)
+    | Head a (Expr' a)
+    | IsEmpty a (Expr' a)
+    | Tail a (Expr' a)
+    | Panic a
+    | Throw a (Expr' a)
+    | TryCatch a (Expr' a) (Pattern' a) (Expr' a)
+    | TryWith a (Expr' a) (Expr' a)
+    | Inl a (Expr' a)
+    | Inr a (Expr' a)
+    | Succ a (Expr' a)
+    | LogicNot a (Expr' a)
+    | Pred a (Expr' a)
+    | IsZero a (Expr' a)
+    | Fix a (Expr' a)
+    | NatRec a (Expr' a) (Expr' a) (Expr' a)
+    | Fold a (Type' a) (Expr' a)
+    | Unfold a (Type' a) (Expr' a)
+    | ConstTrue a
+    | ConstFalse a
+    | ConstUnit a
+    | ConstInt a Integer
+    | ConstMemory a MemoryAddress
+    | Var a StellaIdent
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data PatternBinding = APatternBinding Pattern Expr
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type PatternBinding = PatternBinding' BNFC'Position
+data PatternBinding' a = APatternBinding a (Pattern' a) (Expr' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data VariantFieldType
-    = AVariantFieldType StellaIdent OptionalTyping
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type VariantFieldType = VariantFieldType' BNFC'Position
+data VariantFieldType' a
+    = AVariantFieldType a StellaIdent (OptionalTyping' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data RecordFieldType = ARecordFieldType StellaIdent Type
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type RecordFieldType = RecordFieldType' BNFC'Position
+data RecordFieldType' a = ARecordFieldType a StellaIdent (Type' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
-data Typing = ATyping Expr Type
-  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic)
+type Typing = Typing' BNFC'Position
+data Typing' a = ATyping a (Expr' a) (Type' a)
+  deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
 
 newtype StellaIdent = StellaIdent Data.Text.Text
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic, Data.String.IsString)
@@ -180,4 +213,197 @@ newtype ExtensionName = ExtensionName Data.Text.Text
 
 newtype MemoryAddress = MemoryAddress Data.Text.Text
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic, Data.String.IsString)
+
+-- | Start position (line, column) of something.
+
+type BNFC'Position = C.Maybe (C.Int, C.Int)
+
+pattern BNFC'NoPosition :: BNFC'Position
+pattern BNFC'NoPosition = C.Nothing
+
+pattern BNFC'Position :: C.Int -> C.Int -> BNFC'Position
+pattern BNFC'Position line col = C.Just (line, col)
+
+-- | Get the start position of something.
+
+class HasPosition a where
+  hasPosition :: a -> BNFC'Position
+
+instance HasPosition Program where
+  hasPosition = \case
+    AProgram p _ _ _ -> p
+
+instance HasPosition LanguageDecl where
+  hasPosition = \case
+    LanguageCore p -> p
+
+instance HasPosition Extension where
+  hasPosition = \case
+    AnExtension p _ -> p
+
+instance HasPosition Decl where
+  hasPosition = \case
+    DeclFun p _ _ _ _ _ _ _ -> p
+    DeclFunGeneric p _ _ _ _ _ _ _ _ -> p
+    DeclTypeAlias p _ _ -> p
+    DeclExceptionType p _ -> p
+    DeclExceptionVariant p _ _ -> p
+
+instance HasPosition LocalDecl where
+  hasPosition = \case
+    ALocalDecl p _ -> p
+
+instance HasPosition Annotation where
+  hasPosition = \case
+    InlineAnnotation p -> p
+
+instance HasPosition ParamDecl where
+  hasPosition = \case
+    AParamDecl p _ _ -> p
+
+instance HasPosition ReturnType where
+  hasPosition = \case
+    NoReturnType p -> p
+    SomeReturnType p _ -> p
+
+instance HasPosition ThrowType where
+  hasPosition = \case
+    NoThrowType p -> p
+    SomeThrowType p _ -> p
+
+instance HasPosition Type where
+  hasPosition = \case
+    TypeFun p _ _ -> p
+    TypeForAll p _ _ -> p
+    TypeRec p _ _ -> p
+    TypeSum p _ _ -> p
+    TypeTuple p _ -> p
+    TypeRecord p _ -> p
+    TypeVariant p _ -> p
+    TypeList p _ -> p
+    TypeBool p -> p
+    TypeNat p -> p
+    TypeUnit p -> p
+    TypeTop p -> p
+    TypeBottom p -> p
+    TypeRef p _ -> p
+    TypeVar p _ -> p
+
+instance HasPosition MatchCase where
+  hasPosition = \case
+    AMatchCase p _ _ -> p
+
+instance HasPosition OptionalTyping where
+  hasPosition = \case
+    NoTyping p -> p
+    SomeTyping p _ -> p
+
+instance HasPosition PatternData where
+  hasPosition = \case
+    NoPatternData p -> p
+    SomePatternData p _ -> p
+
+instance HasPosition ExprData where
+  hasPosition = \case
+    NoExprData p -> p
+    SomeExprData p _ -> p
+
+instance HasPosition Pattern where
+  hasPosition = \case
+    PatternVariant p _ _ -> p
+    PatternInl p _ -> p
+    PatternInr p _ -> p
+    PatternTuple p _ -> p
+    PatternRecord p _ -> p
+    PatternList p _ -> p
+    PatternCons p _ _ -> p
+    PatternFalse p -> p
+    PatternTrue p -> p
+    PatternUnit p -> p
+    PatternInt p _ -> p
+    PatternSucc p _ -> p
+    PatternVar p _ -> p
+
+instance HasPosition LabelledPattern where
+  hasPosition = \case
+    ALabelledPattern p _ _ -> p
+
+instance HasPosition Binding where
+  hasPosition = \case
+    ABinding p _ _ -> p
+
+instance HasPosition Expr where
+  hasPosition = \case
+    Sequence p _ _ -> p
+    Assign p _ _ -> p
+    If p _ _ _ -> p
+    Let p _ _ -> p
+    LetRec p _ _ -> p
+    TypeAbstraction p _ _ -> p
+    LessThan p _ _ -> p
+    LessThanOrEqual p _ _ -> p
+    GreaterThan p _ _ -> p
+    GreaterThanOrEqual p _ _ -> p
+    Equal p _ _ -> p
+    NotEqual p _ _ -> p
+    TypeAsc p _ _ -> p
+    TypeCast p _ _ -> p
+    Abstraction p _ _ -> p
+    Variant p _ _ -> p
+    Match p _ _ -> p
+    List p _ -> p
+    Add p _ _ -> p
+    Subtract p _ _ -> p
+    LogicOr p _ _ -> p
+    Multiply p _ _ -> p
+    Divide p _ _ -> p
+    LogicAnd p _ _ -> p
+    Ref p _ -> p
+    Deref p _ -> p
+    Application p _ _ -> p
+    TypeApplication p _ _ -> p
+    DotRecord p _ _ -> p
+    DotTuple p _ _ -> p
+    Tuple p _ -> p
+    Record p _ -> p
+    ConsList p _ _ -> p
+    Head p _ -> p
+    IsEmpty p _ -> p
+    Tail p _ -> p
+    Panic p -> p
+    Throw p _ -> p
+    TryCatch p _ _ _ -> p
+    TryWith p _ _ -> p
+    Inl p _ -> p
+    Inr p _ -> p
+    Succ p _ -> p
+    LogicNot p _ -> p
+    Pred p _ -> p
+    IsZero p _ -> p
+    Fix p _ -> p
+    NatRec p _ _ _ -> p
+    Fold p _ _ -> p
+    Unfold p _ _ -> p
+    ConstTrue p -> p
+    ConstFalse p -> p
+    ConstUnit p -> p
+    ConstInt p _ -> p
+    ConstMemory p _ -> p
+    Var p _ -> p
+
+instance HasPosition PatternBinding where
+  hasPosition = \case
+    APatternBinding p _ _ -> p
+
+instance HasPosition VariantFieldType where
+  hasPosition = \case
+    AVariantFieldType p _ _ -> p
+
+instance HasPosition RecordFieldType where
+  hasPosition = \case
+    ARecordFieldType p _ _ -> p
+
+instance HasPosition Typing where
+  hasPosition = \case
+    ATyping p _ _ -> p
 

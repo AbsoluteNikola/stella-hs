@@ -10,38 +10,53 @@ category:           Language
 build-type:         Simple
 extra-source-files:
     Syntax.cf
+    src/Stella/Ast/Lexer.x
+    src/Stella/Ast/Parser.y
 
-common warnings
+common common-setup
     ghc-options: -Wall
+    default-extensions:
+        DuplicateRecordFields
+        OverloadedRecordDot
+        LambdaCase
 
 library
-    import:           warnings
+    import:           common-setup
     exposed-modules:
         Stella.Ast.AbsSyntax
+        Stella.Ast.LexSyntax
+        Stella.Ast.ParSyntax
         Stella.Ast.PrintSyntax
         Stella.Check.Trans
-    -- other-modules:
-    -- other-extensions:
+        Stella.Check.Errors
+        Stella.Check.Types
+    build-tool-depends:
+        alex:alex,
+        happy:happy
     build-depends:
         base ^>=4.16.4.0,
-        text
+        text,
+        array
+        -- containers,
     hs-source-dirs:   src
     default-language: GHC2021
 
 executable stella-hs
-    import:           warnings
+    import:           common-setup
     main-is:          Main.hs
     -- other-modules:
     -- other-extensions:
     build-depends:
         base ^>=4.16.4.0,
+        text,
+        pretty-simple,
         stella-hs
 
     hs-source-dirs:   exe
     default-language: GHC2021
 
 test-suite stella-hs-test
-    import:           warnings
+    import:           common-setup
     default-language: GHC2021
     -- other-modules:
     -- other-extensions:

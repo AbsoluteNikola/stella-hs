@@ -3,9 +3,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
-#if __GLASGOW_HASKELL__ <= 708
-{-# LANGUAGE OverlappingInstances #-}
-#endif
 
 -- | Pretty-printer for Stella.
 
@@ -144,260 +141,260 @@ instance Print Stella.Ast.AbsSyntax.ExtensionName where
   prt _ (Stella.Ast.AbsSyntax.ExtensionName i) = doc $ showString (Data.Text.unpack i)
 instance Print Stella.Ast.AbsSyntax.MemoryAddress where
   prt _ (Stella.Ast.AbsSyntax.MemoryAddress i) = doc $ showString (Data.Text.unpack i)
-instance Print Stella.Ast.AbsSyntax.Program where
+instance Print (Stella.Ast.AbsSyntax.Program' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.AProgram languagedecl extensions decls -> prPrec i 0 (concatD [prt 0 languagedecl, prt 0 extensions, prt 0 decls])
+    Stella.Ast.AbsSyntax.AProgram _ languagedecl extensions decls -> prPrec i 0 (concatD [prt 0 languagedecl, prt 0 extensions, prt 0 decls])
 
 instance Print [Stella.Ast.AbsSyntax.StellaIdent] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.LanguageDecl where
+instance Print (Stella.Ast.AbsSyntax.LanguageDecl' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.LanguageCore -> prPrec i 0 (concatD [doc (showString "language"), doc (showString "core"), doc (showString ";")])
+    Stella.Ast.AbsSyntax.LanguageCore _ -> prPrec i 0 (concatD [doc (showString "language"), doc (showString "core"), doc (showString ";")])
 
-instance Print Stella.Ast.AbsSyntax.Extension where
+instance Print (Stella.Ast.AbsSyntax.Extension' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.AnExtension extensionnames -> prPrec i 0 (concatD [doc (showString "extend"), doc (showString "with"), prt 0 extensionnames])
+    Stella.Ast.AbsSyntax.AnExtension _ extensionnames -> prPrec i 0 (concatD [doc (showString "extend"), doc (showString "with"), prt 0 extensionnames])
 
 instance Print [Stella.Ast.AbsSyntax.ExtensionName] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print [Stella.Ast.AbsSyntax.Extension] where
+instance Print [Stella.Ast.AbsSyntax.Extension' a] where
   prt _ [] = concatD []
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ";"), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.Decl where
+instance Print (Stella.Ast.AbsSyntax.Decl' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.DeclFun annotations stellaident paramdecls returntype throwtype decls expr -> prPrec i 0 (concatD [prt 0 annotations, doc (showString "fn"), prt 0 stellaident, doc (showString "("), prt 0 paramdecls, doc (showString ")"), prt 0 returntype, prt 0 throwtype, doc (showString "{"), prt 0 decls, doc (showString "return"), prt 0 expr, doc (showString "}")])
-    Stella.Ast.AbsSyntax.DeclFunGeneric annotations stellaident stellaidents paramdecls returntype throwtype decls expr -> prPrec i 0 (concatD [prt 0 annotations, doc (showString "generic"), doc (showString "fn"), prt 0 stellaident, doc (showString "["), prt 0 stellaidents, doc (showString "]"), doc (showString "("), prt 0 paramdecls, doc (showString ")"), prt 0 returntype, prt 0 throwtype, doc (showString "{"), prt 0 decls, doc (showString "return"), prt 0 expr, doc (showString "}")])
-    Stella.Ast.AbsSyntax.DeclTypeAlias stellaident type_ -> prPrec i 0 (concatD [doc (showString "type"), prt 0 stellaident, doc (showString "="), prt 0 type_])
-    Stella.Ast.AbsSyntax.DeclExceptionType type_ -> prPrec i 0 (concatD [doc (showString "exception"), doc (showString "type"), doc (showString "="), prt 0 type_])
-    Stella.Ast.AbsSyntax.DeclExceptionVariant stellaident type_ -> prPrec i 0 (concatD [doc (showString "exception"), doc (showString "variant"), prt 0 stellaident, doc (showString ":"), prt 0 type_])
+    Stella.Ast.AbsSyntax.DeclFun _ annotations stellaident paramdecls returntype throwtype decls expr -> prPrec i 0 (concatD [prt 0 annotations, doc (showString "fn"), prt 0 stellaident, doc (showString "("), prt 0 paramdecls, doc (showString ")"), prt 0 returntype, prt 0 throwtype, doc (showString "{"), prt 0 decls, doc (showString "return"), prt 0 expr, doc (showString "}")])
+    Stella.Ast.AbsSyntax.DeclFunGeneric _ annotations stellaident stellaidents paramdecls returntype throwtype decls expr -> prPrec i 0 (concatD [prt 0 annotations, doc (showString "generic"), doc (showString "fn"), prt 0 stellaident, doc (showString "["), prt 0 stellaidents, doc (showString "]"), doc (showString "("), prt 0 paramdecls, doc (showString ")"), prt 0 returntype, prt 0 throwtype, doc (showString "{"), prt 0 decls, doc (showString "return"), prt 0 expr, doc (showString "}")])
+    Stella.Ast.AbsSyntax.DeclTypeAlias _ stellaident type_ -> prPrec i 0 (concatD [doc (showString "type"), prt 0 stellaident, doc (showString "="), prt 0 type_])
+    Stella.Ast.AbsSyntax.DeclExceptionType _ type_ -> prPrec i 0 (concatD [doc (showString "exception"), doc (showString "type"), doc (showString "="), prt 0 type_])
+    Stella.Ast.AbsSyntax.DeclExceptionVariant _ stellaident type_ -> prPrec i 0 (concatD [doc (showString "exception"), doc (showString "variant"), prt 0 stellaident, doc (showString ":"), prt 0 type_])
 
-instance Print [Stella.Ast.AbsSyntax.Decl] where
+instance Print [Stella.Ast.AbsSyntax.Decl' a] where
   prt _ [] = concatD []
   prt _ (x:xs) = concatD [prt 0 x, prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.LocalDecl where
+instance Print (Stella.Ast.AbsSyntax.LocalDecl' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.ALocalDecl decl -> prPrec i 0 (concatD [prt 0 decl])
+    Stella.Ast.AbsSyntax.ALocalDecl _ decl -> prPrec i 0 (concatD [prt 0 decl])
 
-instance Print [Stella.Ast.AbsSyntax.LocalDecl] where
+instance Print [Stella.Ast.AbsSyntax.LocalDecl' a] where
   prt _ [] = concatD []
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ";"), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.Annotation where
+instance Print (Stella.Ast.AbsSyntax.Annotation' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.InlineAnnotation -> prPrec i 0 (concatD [doc (showString "inline")])
+    Stella.Ast.AbsSyntax.InlineAnnotation _ -> prPrec i 0 (concatD [doc (showString "inline")])
 
-instance Print [Stella.Ast.AbsSyntax.Annotation] where
+instance Print [Stella.Ast.AbsSyntax.Annotation' a] where
   prt _ [] = concatD []
   prt _ (x:xs) = concatD [prt 0 x, prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.ParamDecl where
+instance Print (Stella.Ast.AbsSyntax.ParamDecl' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.AParamDecl stellaident type_ -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString ":"), prt 0 type_])
+    Stella.Ast.AbsSyntax.AParamDecl _ stellaident type_ -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString ":"), prt 0 type_])
 
-instance Print [Stella.Ast.AbsSyntax.ParamDecl] where
+instance Print [Stella.Ast.AbsSyntax.ParamDecl' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.ReturnType where
+instance Print (Stella.Ast.AbsSyntax.ReturnType' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.NoReturnType -> prPrec i 0 (concatD [])
-    Stella.Ast.AbsSyntax.SomeReturnType type_ -> prPrec i 0 (concatD [doc (showString "->"), prt 0 type_])
+    Stella.Ast.AbsSyntax.NoReturnType _ -> prPrec i 0 (concatD [])
+    Stella.Ast.AbsSyntax.SomeReturnType _ type_ -> prPrec i 0 (concatD [doc (showString "->"), prt 0 type_])
 
-instance Print Stella.Ast.AbsSyntax.ThrowType where
+instance Print (Stella.Ast.AbsSyntax.ThrowType' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.NoThrowType -> prPrec i 0 (concatD [])
-    Stella.Ast.AbsSyntax.SomeThrowType types -> prPrec i 0 (concatD [doc (showString "throws"), prt 9 types])
+    Stella.Ast.AbsSyntax.NoThrowType _ -> prPrec i 0 (concatD [])
+    Stella.Ast.AbsSyntax.SomeThrowType _ types -> prPrec i 0 (concatD [doc (showString "throws"), prt 9 types])
 
-instance Print Stella.Ast.AbsSyntax.Type where
+instance Print (Stella.Ast.AbsSyntax.Type' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.TypeFun types type_ -> prPrec i 0 (concatD [doc (showString "fn"), doc (showString "("), prt 0 types, doc (showString ")"), doc (showString "->"), prt 0 type_])
-    Stella.Ast.AbsSyntax.TypeForAll stellaidents type_ -> prPrec i 0 (concatD [doc (showString "forall"), prt 0 stellaidents, doc (showString "."), prt 0 type_])
-    Stella.Ast.AbsSyntax.TypeRec stellaident type_ -> prPrec i 0 (concatD [doc (showString "\181"), prt 0 stellaident, doc (showString "."), prt 0 type_])
-    Stella.Ast.AbsSyntax.TypeSum type_1 type_2 -> prPrec i 1 (concatD [prt 2 type_1, doc (showString "+"), prt 2 type_2])
-    Stella.Ast.AbsSyntax.TypeTuple types -> prPrec i 2 (concatD [doc (showString "{"), prt 0 types, doc (showString "}")])
-    Stella.Ast.AbsSyntax.TypeRecord recordfieldtypes -> prPrec i 2 (concatD [doc (showString "{"), prt 0 recordfieldtypes, doc (showString "}")])
-    Stella.Ast.AbsSyntax.TypeVariant variantfieldtypes -> prPrec i 2 (concatD [doc (showString "<|"), prt 0 variantfieldtypes, doc (showString "|>")])
-    Stella.Ast.AbsSyntax.TypeList type_ -> prPrec i 2 (concatD [doc (showString "["), prt 0 type_, doc (showString "]")])
-    Stella.Ast.AbsSyntax.TypeBool -> prPrec i 3 (concatD [doc (showString "Bool")])
-    Stella.Ast.AbsSyntax.TypeNat -> prPrec i 3 (concatD [doc (showString "Nat")])
-    Stella.Ast.AbsSyntax.TypeUnit -> prPrec i 3 (concatD [doc (showString "Unit")])
-    Stella.Ast.AbsSyntax.TypeTop -> prPrec i 3 (concatD [doc (showString "Top")])
-    Stella.Ast.AbsSyntax.TypeBottom -> prPrec i 3 (concatD [doc (showString "Bot")])
-    Stella.Ast.AbsSyntax.TypeRef type_ -> prPrec i 3 (concatD [doc (showString "&"), prt 2 type_])
-    Stella.Ast.AbsSyntax.TypeVar stellaident -> prPrec i 3 (concatD [prt 0 stellaident])
+    Stella.Ast.AbsSyntax.TypeFun _ types type_ -> prPrec i 0 (concatD [doc (showString "fn"), doc (showString "("), prt 0 types, doc (showString ")"), doc (showString "->"), prt 0 type_])
+    Stella.Ast.AbsSyntax.TypeForAll _ stellaidents type_ -> prPrec i 0 (concatD [doc (showString "forall"), prt 0 stellaidents, doc (showString "."), prt 0 type_])
+    Stella.Ast.AbsSyntax.TypeRec _ stellaident type_ -> prPrec i 0 (concatD [doc (showString "\181"), prt 0 stellaident, doc (showString "."), prt 0 type_])
+    Stella.Ast.AbsSyntax.TypeSum _ type_1 type_2 -> prPrec i 1 (concatD [prt 2 type_1, doc (showString "+"), prt 2 type_2])
+    Stella.Ast.AbsSyntax.TypeTuple _ types -> prPrec i 2 (concatD [doc (showString "{"), prt 0 types, doc (showString "}")])
+    Stella.Ast.AbsSyntax.TypeRecord _ recordfieldtypes -> prPrec i 2 (concatD [doc (showString "{"), prt 0 recordfieldtypes, doc (showString "}")])
+    Stella.Ast.AbsSyntax.TypeVariant _ variantfieldtypes -> prPrec i 2 (concatD [doc (showString "<|"), prt 0 variantfieldtypes, doc (showString "|>")])
+    Stella.Ast.AbsSyntax.TypeList _ type_ -> prPrec i 2 (concatD [doc (showString "["), prt 0 type_, doc (showString "]")])
+    Stella.Ast.AbsSyntax.TypeBool _ -> prPrec i 3 (concatD [doc (showString "Bool")])
+    Stella.Ast.AbsSyntax.TypeNat _ -> prPrec i 3 (concatD [doc (showString "Nat")])
+    Stella.Ast.AbsSyntax.TypeUnit _ -> prPrec i 3 (concatD [doc (showString "Unit")])
+    Stella.Ast.AbsSyntax.TypeTop _ -> prPrec i 3 (concatD [doc (showString "Top")])
+    Stella.Ast.AbsSyntax.TypeBottom _ -> prPrec i 3 (concatD [doc (showString "Bot")])
+    Stella.Ast.AbsSyntax.TypeRef _ type_ -> prPrec i 3 (concatD [doc (showString "&"), prt 2 type_])
+    Stella.Ast.AbsSyntax.TypeVar _ stellaident -> prPrec i 3 (concatD [prt 0 stellaident])
 
-instance Print [Stella.Ast.AbsSyntax.Type] where
+instance Print [Stella.Ast.AbsSyntax.Type' a] where
   prt 9 [x] = concatD [prt 9 x]
   prt 9 (x:xs) = concatD [prt 9 x, doc (showString ","), prt 9 xs]
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.MatchCase where
+instance Print (Stella.Ast.AbsSyntax.MatchCase' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.AMatchCase pattern_ expr -> prPrec i 0 (concatD [prt 0 pattern_, doc (showString "=>"), prt 0 expr])
+    Stella.Ast.AbsSyntax.AMatchCase _ pattern_ expr -> prPrec i 0 (concatD [prt 0 pattern_, doc (showString "=>"), prt 0 expr])
 
-instance Print [Stella.Ast.AbsSyntax.MatchCase] where
+instance Print [Stella.Ast.AbsSyntax.MatchCase' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString "|"), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.OptionalTyping where
+instance Print (Stella.Ast.AbsSyntax.OptionalTyping' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.NoTyping -> prPrec i 0 (concatD [])
-    Stella.Ast.AbsSyntax.SomeTyping type_ -> prPrec i 0 (concatD [doc (showString ":"), prt 0 type_])
+    Stella.Ast.AbsSyntax.NoTyping _ -> prPrec i 0 (concatD [])
+    Stella.Ast.AbsSyntax.SomeTyping _ type_ -> prPrec i 0 (concatD [doc (showString ":"), prt 0 type_])
 
-instance Print Stella.Ast.AbsSyntax.PatternData where
+instance Print (Stella.Ast.AbsSyntax.PatternData' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.NoPatternData -> prPrec i 0 (concatD [])
-    Stella.Ast.AbsSyntax.SomePatternData pattern_ -> prPrec i 0 (concatD [doc (showString "="), prt 0 pattern_])
+    Stella.Ast.AbsSyntax.NoPatternData _ -> prPrec i 0 (concatD [])
+    Stella.Ast.AbsSyntax.SomePatternData _ pattern_ -> prPrec i 0 (concatD [doc (showString "="), prt 0 pattern_])
 
-instance Print Stella.Ast.AbsSyntax.ExprData where
+instance Print (Stella.Ast.AbsSyntax.ExprData' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.NoExprData -> prPrec i 0 (concatD [])
-    Stella.Ast.AbsSyntax.SomeExprData expr -> prPrec i 0 (concatD [doc (showString "="), prt 0 expr])
+    Stella.Ast.AbsSyntax.NoExprData _ -> prPrec i 0 (concatD [])
+    Stella.Ast.AbsSyntax.SomeExprData _ expr -> prPrec i 0 (concatD [doc (showString "="), prt 0 expr])
 
-instance Print Stella.Ast.AbsSyntax.Pattern where
+instance Print (Stella.Ast.AbsSyntax.Pattern' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.PatternVariant stellaident patterndata -> prPrec i 0 (concatD [doc (showString "<|"), prt 0 stellaident, prt 0 patterndata, doc (showString "|>")])
-    Stella.Ast.AbsSyntax.PatternInl pattern_ -> prPrec i 0 (concatD [doc (showString "inl"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
-    Stella.Ast.AbsSyntax.PatternInr pattern_ -> prPrec i 0 (concatD [doc (showString "inr"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
-    Stella.Ast.AbsSyntax.PatternTuple patterns -> prPrec i 0 (concatD [doc (showString "{"), prt 0 patterns, doc (showString "}")])
-    Stella.Ast.AbsSyntax.PatternRecord labelledpatterns -> prPrec i 0 (concatD [doc (showString "{"), prt 0 labelledpatterns, doc (showString "}")])
-    Stella.Ast.AbsSyntax.PatternList patterns -> prPrec i 0 (concatD [doc (showString "["), prt 0 patterns, doc (showString "]")])
-    Stella.Ast.AbsSyntax.PatternCons pattern_1 pattern_2 -> prPrec i 0 (concatD [doc (showString "("), prt 0 pattern_1, doc (showString ","), prt 0 pattern_2, doc (showString ")")])
-    Stella.Ast.AbsSyntax.PatternFalse -> prPrec i 0 (concatD [doc (showString "false")])
-    Stella.Ast.AbsSyntax.PatternTrue -> prPrec i 0 (concatD [doc (showString "true")])
-    Stella.Ast.AbsSyntax.PatternUnit -> prPrec i 0 (concatD [doc (showString "unit")])
-    Stella.Ast.AbsSyntax.PatternInt n -> prPrec i 0 (concatD [prt 0 n])
-    Stella.Ast.AbsSyntax.PatternSucc pattern_ -> prPrec i 0 (concatD [doc (showString "succ"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
-    Stella.Ast.AbsSyntax.PatternVar stellaident -> prPrec i 0 (concatD [prt 0 stellaident])
+    Stella.Ast.AbsSyntax.PatternVariant _ stellaident patterndata -> prPrec i 0 (concatD [doc (showString "<|"), prt 0 stellaident, prt 0 patterndata, doc (showString "|>")])
+    Stella.Ast.AbsSyntax.PatternInl _ pattern_ -> prPrec i 0 (concatD [doc (showString "inl"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
+    Stella.Ast.AbsSyntax.PatternInr _ pattern_ -> prPrec i 0 (concatD [doc (showString "inr"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
+    Stella.Ast.AbsSyntax.PatternTuple _ patterns -> prPrec i 0 (concatD [doc (showString "{"), prt 0 patterns, doc (showString "}")])
+    Stella.Ast.AbsSyntax.PatternRecord _ labelledpatterns -> prPrec i 0 (concatD [doc (showString "{"), prt 0 labelledpatterns, doc (showString "}")])
+    Stella.Ast.AbsSyntax.PatternList _ patterns -> prPrec i 0 (concatD [doc (showString "["), prt 0 patterns, doc (showString "]")])
+    Stella.Ast.AbsSyntax.PatternCons _ pattern_1 pattern_2 -> prPrec i 0 (concatD [doc (showString "("), prt 0 pattern_1, doc (showString ","), prt 0 pattern_2, doc (showString ")")])
+    Stella.Ast.AbsSyntax.PatternFalse _ -> prPrec i 0 (concatD [doc (showString "false")])
+    Stella.Ast.AbsSyntax.PatternTrue _ -> prPrec i 0 (concatD [doc (showString "true")])
+    Stella.Ast.AbsSyntax.PatternUnit _ -> prPrec i 0 (concatD [doc (showString "unit")])
+    Stella.Ast.AbsSyntax.PatternInt _ n -> prPrec i 0 (concatD [prt 0 n])
+    Stella.Ast.AbsSyntax.PatternSucc _ pattern_ -> prPrec i 0 (concatD [doc (showString "succ"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
+    Stella.Ast.AbsSyntax.PatternVar _ stellaident -> prPrec i 0 (concatD [prt 0 stellaident])
 
-instance Print [Stella.Ast.AbsSyntax.Pattern] where
+instance Print [Stella.Ast.AbsSyntax.Pattern' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.LabelledPattern where
+instance Print (Stella.Ast.AbsSyntax.LabelledPattern' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.ALabelledPattern stellaident pattern_ -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString "="), prt 0 pattern_])
+    Stella.Ast.AbsSyntax.ALabelledPattern _ stellaident pattern_ -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString "="), prt 0 pattern_])
 
-instance Print [Stella.Ast.AbsSyntax.LabelledPattern] where
+instance Print [Stella.Ast.AbsSyntax.LabelledPattern' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.Binding where
+instance Print (Stella.Ast.AbsSyntax.Binding' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.ABinding stellaident expr -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString "="), prt 0 expr])
+    Stella.Ast.AbsSyntax.ABinding _ stellaident expr -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString "="), prt 0 expr])
 
-instance Print [Stella.Ast.AbsSyntax.Binding] where
+instance Print [Stella.Ast.AbsSyntax.Binding' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.Expr where
+instance Print (Stella.Ast.AbsSyntax.Expr' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.Sequence expr1 expr2 -> prPrec i 0 (concatD [prt 1 expr1, doc (showString ";"), prt 0 expr2])
-    Stella.Ast.AbsSyntax.Assign expr1 expr2 -> prPrec i 1 (concatD [prt 2 expr1, doc (showString ":="), prt 1 expr2])
-    Stella.Ast.AbsSyntax.If expr1 expr2 expr3 -> prPrec i 1 (concatD [doc (showString "if"), prt 1 expr1, doc (showString "then"), prt 1 expr2, doc (showString "else"), prt 1 expr3])
-    Stella.Ast.AbsSyntax.Let patternbindings expr -> prPrec i 0 (concatD [doc (showString "let"), prt 0 patternbindings, doc (showString "in"), prt 0 expr])
-    Stella.Ast.AbsSyntax.LetRec patternbindings expr -> prPrec i 0 (concatD [doc (showString "letrec"), prt 0 patternbindings, doc (showString "in"), prt 0 expr])
-    Stella.Ast.AbsSyntax.TypeAbstraction stellaidents expr -> prPrec i 0 (concatD [doc (showString "generic"), doc (showString "["), prt 0 stellaidents, doc (showString "]"), prt 0 expr])
-    Stella.Ast.AbsSyntax.LessThan expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "<"), prt 3 expr2])
-    Stella.Ast.AbsSyntax.LessThanOrEqual expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "<="), prt 3 expr2])
-    Stella.Ast.AbsSyntax.GreaterThan expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString ">"), prt 3 expr2])
-    Stella.Ast.AbsSyntax.GreaterThanOrEqual expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString ">="), prt 3 expr2])
-    Stella.Ast.AbsSyntax.Equal expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "=="), prt 3 expr2])
-    Stella.Ast.AbsSyntax.NotEqual expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "!="), prt 3 expr2])
-    Stella.Ast.AbsSyntax.TypeAsc expr type_ -> prPrec i 3 (concatD [prt 3 expr, doc (showString "as"), prt 2 type_])
-    Stella.Ast.AbsSyntax.TypeCast expr type_ -> prPrec i 3 (concatD [prt 3 expr, doc (showString "cast"), doc (showString "as"), prt 2 type_])
-    Stella.Ast.AbsSyntax.Abstraction paramdecls expr -> prPrec i 3 (concatD [doc (showString "fn"), doc (showString "("), prt 0 paramdecls, doc (showString ")"), doc (showString "{"), doc (showString "return"), prt 0 expr, doc (showString "}")])
-    Stella.Ast.AbsSyntax.Variant stellaident exprdata -> prPrec i 3 (concatD [doc (showString "<|"), prt 0 stellaident, prt 0 exprdata, doc (showString "|>")])
-    Stella.Ast.AbsSyntax.Match expr matchcases -> prPrec i 3 (concatD [doc (showString "match"), prt 2 expr, doc (showString "{"), prt 0 matchcases, doc (showString "}")])
-    Stella.Ast.AbsSyntax.List exprs -> prPrec i 3 (concatD [doc (showString "["), prt 0 exprs, doc (showString "]")])
-    Stella.Ast.AbsSyntax.Add expr1 expr2 -> prPrec i 3 (concatD [prt 3 expr1, doc (showString "+"), prt 4 expr2])
-    Stella.Ast.AbsSyntax.Subtract expr1 expr2 -> prPrec i 3 (concatD [prt 3 expr1, doc (showString "-"), prt 4 expr2])
-    Stella.Ast.AbsSyntax.LogicOr expr1 expr2 -> prPrec i 3 (concatD [prt 3 expr1, doc (showString "or"), prt 4 expr2])
-    Stella.Ast.AbsSyntax.Multiply expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "*"), prt 5 expr2])
-    Stella.Ast.AbsSyntax.Divide expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "/"), prt 5 expr2])
-    Stella.Ast.AbsSyntax.LogicAnd expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "and"), prt 5 expr2])
-    Stella.Ast.AbsSyntax.Ref expr -> prPrec i 5 (concatD [doc (showString "new"), doc (showString "("), prt 5 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Deref expr -> prPrec i 5 (concatD [doc (showString "*"), prt 5 expr])
-    Stella.Ast.AbsSyntax.Application expr exprs -> prPrec i 6 (concatD [prt 6 expr, doc (showString "("), prt 0 exprs, doc (showString ")")])
-    Stella.Ast.AbsSyntax.TypeApplication expr types -> prPrec i 6 (concatD [prt 6 expr, doc (showString "["), prt 0 types, doc (showString "]")])
-    Stella.Ast.AbsSyntax.DotRecord expr stellaident -> prPrec i 6 (concatD [prt 6 expr, doc (showString "."), prt 0 stellaident])
-    Stella.Ast.AbsSyntax.DotTuple expr n -> prPrec i 6 (concatD [prt 6 expr, doc (showString "."), prt 0 n])
-    Stella.Ast.AbsSyntax.Tuple exprs -> prPrec i 6 (concatD [doc (showString "{"), prt 0 exprs, doc (showString "}")])
-    Stella.Ast.AbsSyntax.Record bindings -> prPrec i 6 (concatD [doc (showString "{"), prt 0 bindings, doc (showString "}")])
-    Stella.Ast.AbsSyntax.ConsList expr1 expr2 -> prPrec i 6 (concatD [doc (showString "cons"), doc (showString "("), prt 0 expr1, doc (showString ","), prt 0 expr2, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Head expr -> prPrec i 6 (concatD [doc (showString "List::head"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.IsEmpty expr -> prPrec i 6 (concatD [doc (showString "List::isempty"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Tail expr -> prPrec i 6 (concatD [doc (showString "List::tail"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Panic -> prPrec i 6 (concatD [doc (showString "panic!")])
-    Stella.Ast.AbsSyntax.Throw expr -> prPrec i 6 (concatD [doc (showString "throw"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.TryCatch expr1 pattern_ expr2 -> prPrec i 6 (concatD [doc (showString "try"), doc (showString "{"), prt 0 expr1, doc (showString "}"), doc (showString "catch"), doc (showString "{"), prt 0 pattern_, doc (showString "=>"), prt 0 expr2, doc (showString "}")])
-    Stella.Ast.AbsSyntax.TryWith expr1 expr2 -> prPrec i 6 (concatD [doc (showString "try"), doc (showString "{"), prt 0 expr1, doc (showString "}"), doc (showString "with"), doc (showString "{"), prt 0 expr2, doc (showString "}")])
-    Stella.Ast.AbsSyntax.Inl expr -> prPrec i 6 (concatD [doc (showString "inl"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Inr expr -> prPrec i 6 (concatD [doc (showString "inr"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Succ expr -> prPrec i 6 (concatD [doc (showString "succ"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.LogicNot expr -> prPrec i 6 (concatD [doc (showString "not"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Pred expr -> prPrec i 6 (concatD [doc (showString "Nat::pred"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.IsZero expr -> prPrec i 6 (concatD [doc (showString "Nat::iszero"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Fix expr -> prPrec i 6 (concatD [doc (showString "fix"), doc (showString "("), prt 0 expr, doc (showString ")")])
-    Stella.Ast.AbsSyntax.NatRec expr1 expr2 expr3 -> prPrec i 6 (concatD [doc (showString "Nat::rec"), doc (showString "("), prt 0 expr1, doc (showString ","), prt 0 expr2, doc (showString ","), prt 0 expr3, doc (showString ")")])
-    Stella.Ast.AbsSyntax.Fold type_ expr -> prPrec i 6 (concatD [doc (showString "fold"), doc (showString "["), prt 0 type_, doc (showString "]"), prt 7 expr])
-    Stella.Ast.AbsSyntax.Unfold type_ expr -> prPrec i 6 (concatD [doc (showString "unfold"), doc (showString "["), prt 0 type_, doc (showString "]"), prt 7 expr])
-    Stella.Ast.AbsSyntax.ConstTrue -> prPrec i 7 (concatD [doc (showString "true")])
-    Stella.Ast.AbsSyntax.ConstFalse -> prPrec i 7 (concatD [doc (showString "false")])
-    Stella.Ast.AbsSyntax.ConstUnit -> prPrec i 7 (concatD [doc (showString "unit")])
-    Stella.Ast.AbsSyntax.ConstInt n -> prPrec i 7 (concatD [prt 0 n])
-    Stella.Ast.AbsSyntax.ConstMemory memoryaddress -> prPrec i 7 (concatD [prt 0 memoryaddress])
-    Stella.Ast.AbsSyntax.Var stellaident -> prPrec i 7 (concatD [prt 0 stellaident])
+    Stella.Ast.AbsSyntax.Sequence _ expr1 expr2 -> prPrec i 0 (concatD [prt 1 expr1, doc (showString ";"), prt 0 expr2])
+    Stella.Ast.AbsSyntax.Assign _ expr1 expr2 -> prPrec i 1 (concatD [prt 2 expr1, doc (showString ":="), prt 1 expr2])
+    Stella.Ast.AbsSyntax.If _ expr1 expr2 expr3 -> prPrec i 1 (concatD [doc (showString "if"), prt 1 expr1, doc (showString "then"), prt 1 expr2, doc (showString "else"), prt 1 expr3])
+    Stella.Ast.AbsSyntax.Let _ patternbindings expr -> prPrec i 0 (concatD [doc (showString "let"), prt 0 patternbindings, doc (showString "in"), prt 0 expr])
+    Stella.Ast.AbsSyntax.LetRec _ patternbindings expr -> prPrec i 0 (concatD [doc (showString "letrec"), prt 0 patternbindings, doc (showString "in"), prt 0 expr])
+    Stella.Ast.AbsSyntax.TypeAbstraction _ stellaidents expr -> prPrec i 0 (concatD [doc (showString "generic"), doc (showString "["), prt 0 stellaidents, doc (showString "]"), prt 0 expr])
+    Stella.Ast.AbsSyntax.LessThan _ expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "<"), prt 3 expr2])
+    Stella.Ast.AbsSyntax.LessThanOrEqual _ expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "<="), prt 3 expr2])
+    Stella.Ast.AbsSyntax.GreaterThan _ expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString ">"), prt 3 expr2])
+    Stella.Ast.AbsSyntax.GreaterThanOrEqual _ expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString ">="), prt 3 expr2])
+    Stella.Ast.AbsSyntax.Equal _ expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "=="), prt 3 expr2])
+    Stella.Ast.AbsSyntax.NotEqual _ expr1 expr2 -> prPrec i 2 (concatD [prt 3 expr1, doc (showString "!="), prt 3 expr2])
+    Stella.Ast.AbsSyntax.TypeAsc _ expr type_ -> prPrec i 3 (concatD [prt 3 expr, doc (showString "as"), prt 2 type_])
+    Stella.Ast.AbsSyntax.TypeCast _ expr type_ -> prPrec i 3 (concatD [prt 3 expr, doc (showString "cast"), doc (showString "as"), prt 2 type_])
+    Stella.Ast.AbsSyntax.Abstraction _ paramdecls expr -> prPrec i 3 (concatD [doc (showString "fn"), doc (showString "("), prt 0 paramdecls, doc (showString ")"), doc (showString "{"), doc (showString "return"), prt 0 expr, doc (showString "}")])
+    Stella.Ast.AbsSyntax.Variant _ stellaident exprdata -> prPrec i 3 (concatD [doc (showString "<|"), prt 0 stellaident, prt 0 exprdata, doc (showString "|>")])
+    Stella.Ast.AbsSyntax.Match _ expr matchcases -> prPrec i 3 (concatD [doc (showString "match"), prt 2 expr, doc (showString "{"), prt 0 matchcases, doc (showString "}")])
+    Stella.Ast.AbsSyntax.List _ exprs -> prPrec i 3 (concatD [doc (showString "["), prt 0 exprs, doc (showString "]")])
+    Stella.Ast.AbsSyntax.Add _ expr1 expr2 -> prPrec i 3 (concatD [prt 3 expr1, doc (showString "+"), prt 4 expr2])
+    Stella.Ast.AbsSyntax.Subtract _ expr1 expr2 -> prPrec i 3 (concatD [prt 3 expr1, doc (showString "-"), prt 4 expr2])
+    Stella.Ast.AbsSyntax.LogicOr _ expr1 expr2 -> prPrec i 3 (concatD [prt 3 expr1, doc (showString "or"), prt 4 expr2])
+    Stella.Ast.AbsSyntax.Multiply _ expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "*"), prt 5 expr2])
+    Stella.Ast.AbsSyntax.Divide _ expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "/"), prt 5 expr2])
+    Stella.Ast.AbsSyntax.LogicAnd _ expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "and"), prt 5 expr2])
+    Stella.Ast.AbsSyntax.Ref _ expr -> prPrec i 5 (concatD [doc (showString "new"), doc (showString "("), prt 5 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Deref _ expr -> prPrec i 5 (concatD [doc (showString "*"), prt 5 expr])
+    Stella.Ast.AbsSyntax.Application _ expr exprs -> prPrec i 6 (concatD [prt 6 expr, doc (showString "("), prt 0 exprs, doc (showString ")")])
+    Stella.Ast.AbsSyntax.TypeApplication _ expr types -> prPrec i 6 (concatD [prt 6 expr, doc (showString "["), prt 0 types, doc (showString "]")])
+    Stella.Ast.AbsSyntax.DotRecord _ expr stellaident -> prPrec i 6 (concatD [prt 6 expr, doc (showString "."), prt 0 stellaident])
+    Stella.Ast.AbsSyntax.DotTuple _ expr n -> prPrec i 6 (concatD [prt 6 expr, doc (showString "."), prt 0 n])
+    Stella.Ast.AbsSyntax.Tuple _ exprs -> prPrec i 6 (concatD [doc (showString "{"), prt 0 exprs, doc (showString "}")])
+    Stella.Ast.AbsSyntax.Record _ bindings -> prPrec i 6 (concatD [doc (showString "{"), prt 0 bindings, doc (showString "}")])
+    Stella.Ast.AbsSyntax.ConsList _ expr1 expr2 -> prPrec i 6 (concatD [doc (showString "cons"), doc (showString "("), prt 0 expr1, doc (showString ","), prt 0 expr2, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Head _ expr -> prPrec i 6 (concatD [doc (showString "List::head"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.IsEmpty _ expr -> prPrec i 6 (concatD [doc (showString "List::isempty"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Tail _ expr -> prPrec i 6 (concatD [doc (showString "List::tail"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Panic _ -> prPrec i 6 (concatD [doc (showString "panic!")])
+    Stella.Ast.AbsSyntax.Throw _ expr -> prPrec i 6 (concatD [doc (showString "throw"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.TryCatch _ expr1 pattern_ expr2 -> prPrec i 6 (concatD [doc (showString "try"), doc (showString "{"), prt 0 expr1, doc (showString "}"), doc (showString "catch"), doc (showString "{"), prt 0 pattern_, doc (showString "=>"), prt 0 expr2, doc (showString "}")])
+    Stella.Ast.AbsSyntax.TryWith _ expr1 expr2 -> prPrec i 6 (concatD [doc (showString "try"), doc (showString "{"), prt 0 expr1, doc (showString "}"), doc (showString "with"), doc (showString "{"), prt 0 expr2, doc (showString "}")])
+    Stella.Ast.AbsSyntax.Inl _ expr -> prPrec i 6 (concatD [doc (showString "inl"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Inr _ expr -> prPrec i 6 (concatD [doc (showString "inr"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Succ _ expr -> prPrec i 6 (concatD [doc (showString "succ"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.LogicNot _ expr -> prPrec i 6 (concatD [doc (showString "not"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Pred _ expr -> prPrec i 6 (concatD [doc (showString "Nat::pred"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.IsZero _ expr -> prPrec i 6 (concatD [doc (showString "Nat::iszero"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Fix _ expr -> prPrec i 6 (concatD [doc (showString "fix"), doc (showString "("), prt 0 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.NatRec _ expr1 expr2 expr3 -> prPrec i 6 (concatD [doc (showString "Nat::rec"), doc (showString "("), prt 0 expr1, doc (showString ","), prt 0 expr2, doc (showString ","), prt 0 expr3, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Fold _ type_ expr -> prPrec i 6 (concatD [doc (showString "fold"), doc (showString "["), prt 0 type_, doc (showString "]"), prt 7 expr])
+    Stella.Ast.AbsSyntax.Unfold _ type_ expr -> prPrec i 6 (concatD [doc (showString "unfold"), doc (showString "["), prt 0 type_, doc (showString "]"), prt 7 expr])
+    Stella.Ast.AbsSyntax.ConstTrue _ -> prPrec i 7 (concatD [doc (showString "true")])
+    Stella.Ast.AbsSyntax.ConstFalse _ -> prPrec i 7 (concatD [doc (showString "false")])
+    Stella.Ast.AbsSyntax.ConstUnit _ -> prPrec i 7 (concatD [doc (showString "unit")])
+    Stella.Ast.AbsSyntax.ConstInt _ n -> prPrec i 7 (concatD [prt 0 n])
+    Stella.Ast.AbsSyntax.ConstMemory _ memoryaddress -> prPrec i 7 (concatD [prt 0 memoryaddress])
+    Stella.Ast.AbsSyntax.Var _ stellaident -> prPrec i 7 (concatD [prt 0 stellaident])
 
-instance Print [Stella.Ast.AbsSyntax.Expr] where
+instance Print [Stella.Ast.AbsSyntax.Expr' a] where
   prt 2 [x] = concatD [prt 2 x, doc (showString ";")]
   prt 2 (x:xs) = concatD [prt 2 x, doc (showString ";"), prt 2 xs]
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.PatternBinding where
+instance Print (Stella.Ast.AbsSyntax.PatternBinding' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.APatternBinding pattern_ expr -> prPrec i 0 (concatD [prt 0 pattern_, doc (showString "="), prt 0 expr])
+    Stella.Ast.AbsSyntax.APatternBinding _ pattern_ expr -> prPrec i 0 (concatD [prt 0 pattern_, doc (showString "="), prt 0 expr])
 
-instance Print [Stella.Ast.AbsSyntax.PatternBinding] where
+instance Print [Stella.Ast.AbsSyntax.PatternBinding' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.VariantFieldType where
+instance Print (Stella.Ast.AbsSyntax.VariantFieldType' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.AVariantFieldType stellaident optionaltyping -> prPrec i 0 (concatD [prt 0 stellaident, prt 0 optionaltyping])
+    Stella.Ast.AbsSyntax.AVariantFieldType _ stellaident optionaltyping -> prPrec i 0 (concatD [prt 0 stellaident, prt 0 optionaltyping])
 
-instance Print [Stella.Ast.AbsSyntax.VariantFieldType] where
+instance Print [Stella.Ast.AbsSyntax.VariantFieldType' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.RecordFieldType where
+instance Print (Stella.Ast.AbsSyntax.RecordFieldType' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.ARecordFieldType stellaident type_ -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString ":"), prt 0 type_])
+    Stella.Ast.AbsSyntax.ARecordFieldType _ stellaident type_ -> prPrec i 0 (concatD [prt 0 stellaident, doc (showString ":"), prt 0 type_])
 
-instance Print [Stella.Ast.AbsSyntax.RecordFieldType] where
+instance Print [Stella.Ast.AbsSyntax.RecordFieldType' a] where
   prt _ [] = concatD []
   prt _ [x] = concatD [prt 0 x]
   prt _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
 
-instance Print Stella.Ast.AbsSyntax.Typing where
+instance Print (Stella.Ast.AbsSyntax.Typing' a) where
   prt i = \case
-    Stella.Ast.AbsSyntax.ATyping expr type_ -> prPrec i 0 (concatD [prt 0 expr, doc (showString ":"), prt 0 type_])
+    Stella.Ast.AbsSyntax.ATyping _ expr type_ -> prPrec i 0 (concatD [prt 0 expr, doc (showString ":"), prt 0 type_])

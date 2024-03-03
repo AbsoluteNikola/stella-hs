@@ -1,0 +1,66 @@
+The BNF Converter, 2.9.5 (c) 2002-today BNFC development team.
+Free software under the BSD 3-clause license.
+List of recent contributors at https://github.com/BNFC/bnfc/graphs/contributors.
+Report bugs at https://github.com/BNFC/bnfc/issues.
+
+usage: bnfc [--TARGET] [OPTIONS] LANG.cf
+   or: bnfc --[numeric-]version
+   or: bnfc [--license]
+   or: bnfc [--help]
+
+Global options
+    --help                        show help
+    --license                     show license
+    --version, --numeric-version  show version number
+
+Common options
+  -m[MAKEFILE]  --makefile[=MAKEFILE]  generate Makefile
+  -o DIR        --outputdir=DIR        Redirects all generated files into DIR
+                --force                Ignore errors in the grammar (may produce ill-formed output or crash)
+
+TARGET languages
+    --java          Output Java code [default: for use with JLex and CUP]
+    --java-antlr    Output Java code for use with ANTLR (short for --java --antlr)
+    --haskell       Output Haskell code for use with Alex and Happy (default)
+    --haskell-gadt  Output Haskell code which uses GADTs
+    --latex         Output LaTeX code to generate a PDF description of the language
+    --c             Output C code for use with FLex and Bison
+    --cpp           Output C++ code for use with FLex and Bison
+    --cpp-nostl     Output C++ code (without STL) for use with FLex and Bison
+    --ocaml         Output OCaml code for use with ocamllex and ocamlyacc
+    --ocaml-menhir  Output OCaml code for use with ocamllex and menhir (short for --ocaml --menhir)
+    --pygments      Output a Python lexer for Pygments
+    --check         No output. Just check input LBNF file
+
+Special options for the Haskell backend
+  -p NAMESPACE  --name-space=NAMESPACE  Prepend NAMESPACE to the package/module name
+  -d                                    Put Haskell code in modules LANG.* instead of LANG* (recommended)
+                --bytestrings           Use ByteString in Alex lexer [deprecated, use --text-token]
+                --text-token            Use Text in Alex lexer
+                --string-token          Use String in Alex lexer (default)
+                --glr                   Output Happy GLR parser [deprecated]
+                --functor               Make the AST a functor and use it to store the position of the nodes
+                --generic               Derive Data, Generic, and Typeable instances for AST types
+                --xml                   Also generate a DTD and an XML printer
+                --xmlt                  DTD and an XML printer, another encoding
+                --agda                  Also generate Agda bindings for the abstract syntax
+
+Special options for the Java backend
+  -l            --line-numbers          Add and set line_number field for all syntax classes
+                                        (Note: Java requires cup version 0.11b-2014-06-11 or greater.)
+  -p NAMESPACE  --name-space=NAMESPACE  Prepend NAMESPACE to the package/module name
+                --jlex                  Lex with JLex, parse with CUP (default)
+                --jflex                 Lex with JFlex, parse with CUP
+                --antlr4                Lex and parse with antlr4
+
+Special options for the C backend
+  -l  --line-numbers  Add and set line_number field for all syntax classes
+                      (Note: Java requires cup version 0.11b-2014-06-11 or greater.)
+
+Special options for the C++ backend
+  -l            --line-numbers          Add and set line_number field for all syntax classes
+                                        (Note: Java requires cup version 0.11b-2014-06-11 or greater.)
+                --ansi                  Restrict to ANSI language standard
+  -p NAMESPACE  --name-space=NAMESPACE  Prepend NAMESPACE to the package/module name
+
+
