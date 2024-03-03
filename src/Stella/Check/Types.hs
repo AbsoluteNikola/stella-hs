@@ -18,3 +18,8 @@ data SType
   | SimpleType SimpleType
   | TypeVarType Text -- type with name should be in env
   deriving (Eq, Show)
+
+unit_, bool_, nat_ :: SType
+unit_ = SimpleType Unit
+bool_ = SimpleType Boolean
+nat_ = SimpleType Nat

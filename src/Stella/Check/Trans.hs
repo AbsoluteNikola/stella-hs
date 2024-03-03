@@ -3,6 +3,8 @@
 -- Templates for pattern matching on abstract syntax
 
 {-# OPTIONS_GHC -fno-warn-unused-matches #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant pure" #-}
 
 module Stella.Check.Trans where
 
@@ -15,32 +17,33 @@ import qualified Stella.Check.Env as Env
 import Stella.Check.Env (CheckerM)
 import qualified Data.Map as Map
 import Control.Monad.Except ( MonadError(throwError) )
+import Stella.Check.Errors (mkError, ErrorType (..))
+import Control.Monad.IO.Class (liftIO)
+import Text.Pretty.Simple (pPrint)
+import Data.Functor ((<&>))
+import Control.Monad (when)
 
 type Checker = CheckerM SType
 
-failure :: forall a b. Show a => a -> CheckerM b
-failure x = throwError $ "Undefined case: " ++ show x
+failNotImplemented :: forall a b. (HasPosition a) => a -> CheckerM b
+failNotImplemented node = throwError $ mkError node ErrorUnimplementedCase
 
-transStellaIdent :: StellaIdent -> Checker
-transStellaIdent x = case x of
-  StellaIdent string -> failure x
+failWith :: forall a b. (HasPosition a) => a -> ErrorType -> CheckerM b
+failWith x err = throwError $ mkError x err
 
-transExtensionName :: ExtensionName -> Checker
-transExtensionName x = case x of
-  ExtensionName string -> failure x
-
-transMemoryAddress :: MemoryAddress -> Checker
-transMemoryAddress x = case x of
-  MemoryAddress string -> failure x
+debugPrint :: Show a => a ->  CheckerM ()
+debugPrint = liftIO . pPrint
 
 transProgram :: Program -> Checker
 transProgram x = case x of
   AProgram pos languagedecl extensions decls -> do
     env <- transDeclSignatures decls
+    debugPrint env
+    Env.withEnv env $
+      for_ decls transDecl
     mainFunction <-  case Map.lookup "main" env.termsEnv of
       Just (FuncType ftd) -> pure ftd
-      _ -> throwError "No main function"
-    for_ decls transDecl
+      _ -> failWith x ErrorMissingMain
     pure mainFunction.returnType
 
 data TransDeclData = TransDeclData
@@ -53,7 +56,8 @@ transDeclSignatures decls = do
   transData <- transDeclsTypes decls
   pure Env.Env
     { typesEnv = Map.fromList transData.typeAliases
-    , termsEnv = Map.fromList transData.typeAliases
+    , termsEnv = Map.fromList $ transData.functions
+      <&> \(name, (ftd, _)) -> (name, FuncType ftd)
     }
 
 transDeclsTypes :: [Decl] -> CheckerM TransDeclData
@@ -73,33 +77,38 @@ transDeclsTypes = foldlM go start
       DeclTypeAlias pos (StellaIdent name) type_ -> do
         t <- transType type_
         pure $ cur{typeAliases = (name, t) : cur.typeAliases}
-      _ -> failure dec
+      _ -> failNotImplemented dec
     start = TransDeclData [] []
 
 transLanguageDecl :: LanguageDecl -> Checker
 transLanguageDecl x = case x of
-  LanguageCore pos -> failure x
+  LanguageCore pos -> failNotImplemented x
 
 transExtension :: Extension -> Checker
 transExtension x = case x of
-  AnExtension pos extensionnames -> failure x
+  AnExtension pos extensionnames -> failNotImplemented x
 
 transDecl :: Decl -> Checker
 transDecl x = case x of
-  DeclFun pos annotations (StellaIdent name) paramdecls returntype throwtype decls expr -> failure x
-  DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failure x
-  DeclTypeAlias pos (StellaIdent name) type_ -> failure x
-  DeclExceptionType pos type_ -> failure x
-  DeclExceptionVariant pos (StellaIdent name) type_ -> failure x
+  DeclFun pos annotations (StellaIdent name) paramdecls returntype throwtype decls expr -> do
+    env <- transDeclSignatures decls
+    Env.withEnv env $
+      for_ decls transDecl
+    exprT <- transExpr expr
+    pure exprT
+  DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failNotImplemented x
+  DeclTypeAlias pos (StellaIdent name) type_ -> transType type_
+  DeclExceptionType pos type_ -> failNotImplemented x
+  DeclExceptionVariant pos (StellaIdent name) type_ -> failNotImplemented x
 
 -- looks like dead code
 transLocalDecl :: LocalDecl -> Checker
 transLocalDecl x = case x of
-  ALocalDecl pos decl -> failure x
+  ALocalDecl pos decl -> failNotImplemented x
 
 transAnnotation :: Annotation -> Checker
 transAnnotation x = case x of
-  InlineAnnotation pos -> failure x
+  InlineAnnotation pos -> failNotImplemented x
 
 transParamDecl :: ParamDecl -> CheckerM (Text, SType)
 transParamDecl x = case x of
@@ -112,8 +121,8 @@ transReturnType x = case x of
 
 transThrowType :: ThrowType -> Checker
 transThrowType x = case x of
-  NoThrowType pos -> failure x
-  SomeThrowType pos types -> failure x
+  NoThrowType pos -> failNotImplemented x
+  SomeThrowType pos types -> failNotImplemented x
 
 transType :: Type -> Checker
 transType x = case x of
@@ -124,137 +133,155 @@ transType x = case x of
       { argsType = argsTypes
       , returnType = returnType
       }
-  TypeForAll pos stellaidents type_ -> failure x
-  TypeRec pos (StellaIdent name) type_ -> failure x
-  TypeSum pos type_1 type_2 -> failure x
-  TypeTuple pos types -> failure x
-  TypeRecord pos recordfieldtypes -> failure x
-  TypeVariant pos variantfieldtypes -> failure x
+  TypeForAll pos stellaidents type_ -> failNotImplemented x
+  TypeRec pos (StellaIdent name) type_ -> failNotImplemented x
+  TypeSum pos type_1 type_2 -> failNotImplemented x
+  TypeTuple pos types -> failNotImplemented x
+  TypeRecord pos recordfieldtypes -> failNotImplemented x
+  TypeVariant pos variantfieldtypes -> failNotImplemented x
   TypeList pos type_ -> do
     innerType <- transType type_
     pure $ ListType innerType
   TypeBool pos -> pure $ SimpleType Boolean
   TypeNat  pos-> pure $ SimpleType Nat
   TypeUnit pos -> pure $ SimpleType Unit
-  TypeTop pos -> failure x
-  TypeBottom pos -> failure x
-  TypeRef pos type_ -> failure x
+  TypeTop pos -> failNotImplemented x
+  TypeBottom pos -> failNotImplemented x
+  TypeRef pos type_ -> failNotImplemented x
   TypeVar pos (StellaIdent name) -> pure $ TypeVarType name
 
 transMatchCase :: MatchCase -> Checker
 transMatchCase x = case x of
-  AMatchCase pos pattern_ expr -> failure x
+  AMatchCase pos pattern_ expr -> failNotImplemented x
 
 transOptionalTyping :: OptionalTyping -> Checker
 transOptionalTyping x = case x of
-  NoTyping  pos-> failure x
-  SomeTyping  pos type_ -> failure x
+  NoTyping  pos-> failNotImplemented x
+  SomeTyping  pos type_ -> failNotImplemented x
 
 transPatternData :: PatternData -> Checker
 transPatternData x = case x of
-  NoPatternData pos-> failure x
-  SomePatternData  pos pattern_ -> failure x
+  NoPatternData pos-> failNotImplemented x
+  SomePatternData  pos pattern_ -> failNotImplemented x
 
 transExprData :: ExprData -> Checker
 transExprData x = case x of
-  NoExprData pos -> failure x
-  SomeExprData  pos expr -> failure x
+  NoExprData pos -> failNotImplemented x
+  SomeExprData  pos expr -> failNotImplemented x
 
 transPattern :: Pattern -> Checker
 transPattern x = case x of
-  PatternVariant pos (StellaIdent name) patterndata -> failure x
-  PatternInl pos pattern_ -> failure x
-  PatternInr pos pattern_ -> failure x
-  PatternTuple pos patterns -> failure x
-  PatternRecord pos labelledpatterns -> failure x
-  PatternList pos patterns -> failure x
-  PatternCons pos pattern_1 pattern_2 -> failure x
-  PatternFalse pos -> failure x
-  PatternTrue pos -> failure x
-  PatternUnit pos -> failure x
-  PatternInt pos integer -> failure x
-  PatternSucc pos pattern_ -> failure x
-  PatternVar pos (StellaIdent name) -> failure x
+  PatternVariant pos (StellaIdent name) patterndata -> failNotImplemented x
+  PatternInl pos pattern_ -> failNotImplemented x
+  PatternInr pos pattern_ -> failNotImplemented x
+  PatternTuple pos patterns -> failNotImplemented x
+  PatternRecord pos labelledpatterns -> failNotImplemented x
+  PatternList pos patterns -> failNotImplemented x
+  PatternCons pos pattern_1 pattern_2 -> failNotImplemented x
+  PatternFalse pos -> failNotImplemented x
+  PatternTrue pos -> failNotImplemented x
+  PatternUnit pos -> failNotImplemented x
+  PatternInt pos integer -> failNotImplemented x
+  PatternSucc pos pattern_ -> failNotImplemented x
+  PatternVar pos (StellaIdent name) -> failNotImplemented x
 
 transLabelledPattern :: LabelledPattern -> Checker
 transLabelledPattern x = case x of
-  ALabelledPattern pos (StellaIdent name) pattern_ -> failure x
+  ALabelledPattern pos (StellaIdent name) pattern_ -> failNotImplemented x
 
 transBinding :: Binding -> Checker
 transBinding x = case x of
-  ABinding pos (StellaIdent name) expr -> failure x
+  ABinding pos (StellaIdent name) expr -> failNotImplemented x
 
 transExpr :: Expr -> Checker
 transExpr x = case x of
-  Sequence pos expr1 expr2 -> failure x
-  Assign pos expr1 expr2 -> failure x
-  If pos expr1 expr2 expr3 -> failure x
-  Let pos patternbindings expr -> failure x
-  LetRec pos patternbindings expr -> failure x
-  TypeAbstraction pos stellaidents expr -> failure x
-  LessThan pos expr1 expr2 -> failure x
-  LessThanOrEqual pos expr1 expr2 -> failure x
-  GreaterThan pos expr1 expr2 -> failure x
-  GreaterThanOrEqual pos expr1 expr2 -> failure x
-  Equal pos expr1 expr2 -> failure x
-  NotEqual pos expr1 expr2 -> failure x
-  TypeAsc pos expr type_ -> failure x
-  TypeCast pos expr type_ -> failure x
-  Abstraction pos paramdecls expr -> failure x
-  Variant pos (StellaIdent name) exprdata -> failure x
-  Match pos expr matchcases -> failure x
-  List pos exprs -> failure x
-  Add pos expr1 expr2 -> failure x
-  Subtract pos expr1 expr2 -> failure x
-  LogicOr pos expr1 expr2 -> failure x
-  Multiply pos expr1 expr2 -> failure x
-  Divide pos expr1 expr2 -> failure x
-  LogicAnd pos expr1 expr2 -> failure x
-  Ref pos expr -> failure x
-  Deref pos expr -> failure x
-  Application pos expr exprs -> failure x
-  TypeApplication pos expr types -> failure x
-  DotRecord pos expr (StellaIdent name) -> failure x
-  DotTuple pos expr integer -> failure x
-  Tuple pos exprs -> failure x
-  Record pos bindings -> failure x
-  ConsList pos expr1 expr2 -> failure x
-  Head pos expr -> failure x
-  IsEmpty pos expr -> failure x
-  Tail pos expr -> failure x
-  Panic pos -> failure x
-  Throw pos expr -> failure x
-  TryCatch pos expr1 pattern_ expr2 -> failure x
-  TryWith pos expr1 expr2 -> failure x
-  Inl pos expr -> failure x
-  Inr pos expr -> failure x
-  Succ pos expr -> failure x
-  LogicNot pos expr -> failure x
-  Pred pos expr -> failure x
-  IsZero pos expr -> failure x
-  Fix pos expr -> failure x
-  NatRec pos expr1 expr2 expr3 -> failure x
-  Fold pos type_ expr -> failure x
-  Unfold pos type_ expr -> failure x
+  Sequence pos expr1 expr2 -> do
+    expr1Type <- transExpr expr1
+    when (expr1Type /= unit_) $
+      failWith expr1 ErrorUnexpectedTypeForExpression
+    expr2Type <- transExpr expr2
+    pure expr2Type
+  Assign pos expr1 expr2 -> do
+    expr1Type <- transExpr expr1
+    expr2Type <- transExpr expr2
+    when (expr1Type /= expr2Type) $
+      failWith expr1 ErrorUnexpectedTypeForExpression
+    pure unit_
+  If pos expr1 expr2 expr3 -> do
+    expr1Type <- transExpr expr1
+    when (expr1Type /= bool_) $
+      failWith expr1 ErrorUnexpectedTypeForExpression
+    expr2Type <- transExpr expr2
+    expr3Type <- transExpr expr3
+    when (expr2Type /= expr3Type) $
+      failWith expr3 ErrorUnexpectedTypeForExpression
+    pure expr2Type
+  Let pos patternbindings expr -> failNotImplemented x
+  LetRec pos patternbindings expr -> failNotImplemented x
+  TypeAbstraction pos stellaidents expr -> failNotImplemented x
+  LessThan pos expr1 expr2 -> failNotImplemented x
+  LessThanOrEqual pos expr1 expr2 -> failNotImplemented x
+  GreaterThan pos expr1 expr2 -> failNotImplemented x
+  GreaterThanOrEqual pos expr1 expr2 -> failNotImplemented x
+  Equal pos expr1 expr2 -> failNotImplemented x
+  NotEqual pos expr1 expr2 -> failNotImplemented x
+  TypeAsc pos expr type_ -> failNotImplemented x
+  TypeCast pos expr type_ -> failNotImplemented x
+  Abstraction pos paramdecls expr -> failNotImplemented x
+  Variant pos (StellaIdent name) exprdata -> failNotImplemented x
+  Match pos expr matchcases -> failNotImplemented x
+  List pos exprs -> failNotImplemented x
+  Add pos expr1 expr2 -> failNotImplemented x
+  Subtract pos expr1 expr2 -> failNotImplemented x
+  LogicOr pos expr1 expr2 -> failNotImplemented x
+  Multiply pos expr1 expr2 -> failNotImplemented x
+  Divide pos expr1 expr2 -> failNotImplemented x
+  LogicAnd pos expr1 expr2 -> failNotImplemented x
+  Ref pos expr -> failNotImplemented x
+  Deref pos expr -> failNotImplemented x
+  Application pos expr exprs -> failNotImplemented x
+  TypeApplication pos expr types -> failNotImplemented x
+  DotRecord pos expr (StellaIdent name) -> failNotImplemented x
+  DotTuple pos expr integer -> failNotImplemented x
+  Tuple pos exprs -> failNotImplemented x
+  Record pos bindings -> failNotImplemented x
+  ConsList pos expr1 expr2 -> failNotImplemented x
+  Head pos expr -> failNotImplemented x
+  IsEmpty pos expr -> failNotImplemented x
+  Tail pos expr -> failNotImplemented x
+  Panic pos -> failNotImplemented x
+  Throw pos expr -> failNotImplemented x
+  TryCatch pos expr1 pattern_ expr2 -> failNotImplemented x
+  TryWith pos expr1 expr2 -> failNotImplemented x
+  Inl pos expr -> failNotImplemented x
+  Inr pos expr -> failNotImplemented x
+  Succ pos expr -> failNotImplemented x
+  LogicNot pos expr -> failNotImplemented x
+  Pred pos expr -> failNotImplemented x
+  IsZero pos expr -> failNotImplemented x
+  Fix pos expr -> failNotImplemented x
+  NatRec pos expr1 expr2 expr3 -> failNotImplemented x
+  Fold pos type_ expr -> failNotImplemented x
+  Unfold pos type_ expr -> failNotImplemented x
   ConstTrue pos -> pure $ SimpleType Boolean
   ConstFalse pos -> pure $ SimpleType Boolean
   ConstUnit pos -> pure $ SimpleType Unit
-  ConstInt pos integer -> failure x
-  ConstMemory pos memoryaddress -> failure x
-  Var pos (StellaIdent name) -> failure x
+  ConstInt pos integer -> failNotImplemented x
+  ConstMemory pos memoryaddress -> failNotImplemented x
+  Var pos (StellaIdent name) -> failNotImplemented x
 
 transPatternBinding :: PatternBinding -> Checker
 transPatternBinding x = case x of
-  APatternBinding pos pattern_ expr -> failure x
+  APatternBinding pos pattern_ expr -> failNotImplemented x
 
 transVariantFieldType :: VariantFieldType -> Checker
 transVariantFieldType x = case x of
-  AVariantFieldType pos (StellaIdent name) optionaltyping -> failure x
+  AVariantFieldType pos (StellaIdent name) optionaltyping -> failNotImplemented x
 
 transRecordFieldType :: RecordFieldType -> Checker
 transRecordFieldType x = case x of
-  ARecordFieldType pos (StellaIdent name) type_ -> failure x
+  ARecordFieldType pos (StellaIdent name) type_ -> failNotImplemented x
 
 transTyping :: Typing -> Checker
 transTyping x = case x of
-  ATyping pos expr type_ -> failure x
+  ATyping pos expr type_ -> failNotImplemented x
