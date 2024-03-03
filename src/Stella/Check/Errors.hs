@@ -3,9 +3,10 @@ module Stella.Check.Errors (mkError, ErrorType(..), StellaError, renderStellaErr
 import Stella.Ast.AbsSyntax (HasPosition (hasPosition))
 import Data.Text (Text)
 import qualified Data.Text as T
+import Stella.Ast.PrintSyntax (Print, printTree)
 
 data StellaError where
-  StellaError :: HasPosition s =>
+  StellaError :: (HasPosition s, Print s) =>
     { brokenNode :: s
     , errorType :: ErrorType
     } -> StellaError
@@ -13,7 +14,7 @@ data StellaError where
 instance Show StellaError where
   show = T.unpack . renderStellaError
 
-mkError :: HasPosition s => s -> ErrorType -> StellaError
+mkError :: (HasPosition s, Print s) => s -> ErrorType -> StellaError
 mkError node err = StellaError
   { brokenNode = node
   , errorType = err
@@ -73,12 +74,16 @@ renderErrorType = \case
   ErrorUnimplementedCase -> "ERROR_UNIMPLEMENTED_CASE"
 
 renderStellaError :: StellaError -> Text
-renderStellaError StellaError{..} = renderErrorType errorType <> "\n" <> renderPosition (hasPosition brokenNode)
+renderStellaError StellaError{..} = "Error: " <>
+  renderErrorType errorType <> "\n" <>
+  renderPosition (hasPosition brokenNode) <> "\n" <>
+  "Broken node: " <> "\n" <>
+  T.pack (printTree brokenNode)
 
 renderPosition :: Maybe (Int, Int) -> Text
 renderPosition = \case
   Nothing -> ""
-  Just (line, col) -> "at position " <> renderInt line <> ":" <> renderInt col
+  Just (line, col) -> "At position " <> renderInt line <> ":" <> renderInt col
 
 renderInt :: Int -> Text
 renderInt = T.pack . show

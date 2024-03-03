@@ -12,10 +12,15 @@ data Env = Env
   , termsEnv :: Map.Map Text SType
   } deriving (Show)
 
+addTerms :: [(Text, SType)] -> Env -> Env
+addTerms terms env = env{termsEnv = newTerms}
+  where
+    newTerms = Map.fromList terms `Map.union` env.termsEnv
+
 instance Semigroup Env where
   e1 <> e2 = Env
-    { typesEnv = e1.typesEnv `Map.union` e2.typesEnv
-    , termsEnv = e2.termsEnv `Map.union` e2.termsEnv
+    { typesEnv = e2.typesEnv `Map.union` e1.typesEnv
+    , termsEnv = e2.termsEnv `Map.union` e1.termsEnv
     }
 
 instance Monoid Env where
@@ -26,3 +31,11 @@ newtype CheckerM a = CheckerM { unCheckerM :: ReaderT Env (ExceptT StellaError I
 
 withEnv :: Env -> CheckerM a -> CheckerM a
 withEnv env = local (env <>)
+
+withTerms :: [(Text, SType)] -> CheckerM a -> CheckerM a
+withTerms terms = local (addTerms terms)
+
+lookupTerm :: Text -> CheckerM (Maybe SType)
+lookupTerm name = do
+  env <- ask
+  pure $ Map.lookup name env.termsEnv

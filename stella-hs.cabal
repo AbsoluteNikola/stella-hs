@@ -21,6 +21,7 @@ common common-setup
         LambdaCase
         OverloadedStrings
         RecordWildCards
+        ViewPatterns
 
 library
     import:           common-setup
