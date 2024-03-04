@@ -26,6 +26,8 @@ import Stella.Ast.PrintSyntax (Print)
 import Control.Monad.Reader (ask)
 import qualified Data.List as L
 import Control.Applicative (liftA2)
+import qualified Data.List.NonEmpty as NE
+import Data.Traversable (for)
 
 type Checker = CheckerM SType
 
@@ -183,9 +185,13 @@ transType x = case x of
   TypeRef pos type_ -> failNotImplemented x
   TypeVar pos (StellaIdent name) -> pure $ TypeVarType name
 
-transMatchCase :: MatchCase -> Checker
-transMatchCase x = case x of
-  AMatchCase pos pattern_ expr -> failNotImplemented x
+transMatchCase :: Maybe SType -> SType -> MatchCase -> Checker
+transMatchCase desiredType matchType x = case x of
+  AMatchCase pos pattern_ expr -> do
+    newVars <- transPattern matchType pattern_
+    exprT <- Env.withTerms newVars $
+      transExpr desiredType expr
+    pure exprT
 
 transOptionalTyping :: OptionalTyping -> Checker
 transOptionalTyping x = case x of
@@ -205,8 +211,12 @@ transExprData x = case x of
 transPattern :: SType -> Pattern -> CheckerM [(Text, SType)]
 transPattern t x = case x of
   PatternVariant pos (StellaIdent name) patterndata -> failNotImplemented x
-  PatternInl pos pattern_ -> failNotImplemented x
-  PatternInr pos pattern_ -> failNotImplemented x
+  PatternInl pos pattern_ -> case t of
+    SumType std -> transPattern std.leftType pattern_
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternInr pos pattern_ -> case t of
+    SumType std -> transPattern std.rightType pattern_
+    _ -> failWith x ErrorUnexpectedPatternForType
   PatternTuple pos patterns -> failNotImplemented x
   PatternRecord pos labelledpatterns -> failNotImplemented x
   PatternList pos patterns -> failNotImplemented x
@@ -286,22 +296,18 @@ transExpr desiredType x = case x of
       , returnType = retType
       }
   Variant pos (StellaIdent name) exprdata -> failNotImplemented x
-  Match pos expr matchcases -> failNotImplemented x
-  List pos exprs -> do
-    case exprs of
-      -- empty list, should infer type
-      [] -> case desiredType of
-        Just (ListType t) -> pure (ListType t)
-        Just _ -> failWith x ErrorUnexpectedTypeForExpression
-        Nothing -> failWith x ErrorAmbiguousList
-      (e:es) -> do
-        -- with some manipulations we can understand desired type
-        eT <- transExpr Nothing e
-        for_ es $ \e' -> do
-          e'T <- transExpr Nothing e'
-          when (e'T /= eT) $
-            failWith e' ErrorUnexpectedTypeForExpression
-        pure $ ListType eT
+  Match pos expr matchcases -> do
+    exprT <- transExpr Nothing expr
+    casesT <- case NE.nonEmpty matchcases of
+      Nothing -> failWith x ErrorIllegalEmptyMatching
+      Just cases -> do
+        firstCaseExprT <- transMatchCase desiredType exprT (NE.head cases)
+        for_ (NE.tail cases) $ \c -> do
+          ct <- transMatchCase desiredType exprT (NE.head cases)
+          when (ct /= firstCaseExprT) $
+            failWith expr ErrorUnexpectedTypeForExpression
+        pure firstCaseExprT
+    pure casesT
   Add pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
   Subtract pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
   LogicOr pos expr1 expr2 -> logicOperator expr1 expr2
@@ -314,8 +320,11 @@ transExpr desiredType x = case x of
     funcType <- transExpr Nothing func >>= \case
       FuncType ftd -> pure ftd
       _ -> failWith func ErrorNotAFunction
-    (zip args -> argsTypes) <- traverse (transExpr Nothing) args
-    checkFunctionApplication x funcType argsTypes
+    argsWithTypes <-
+      for (zip args funcType.argsType) $ \(expr, t) ->
+        (expr,) <$> transExpr (Just t) expr
+    -- some duplication of type check logic. TODO: rewrite in better times
+    checkFunctionApplication x funcType argsWithTypes
   TypeApplication pos expr types -> failNotImplemented x
   DotRecord pos expr (StellaIdent name) -> do
     rtd <- transExpr Nothing expr >>= \case
@@ -365,12 +374,41 @@ transExpr desiredType x = case x of
       lt@(ListType _) -> pure lt
       _ -> failWith expr ErrorUnexpectedList
     pure listType
+  List pos exprs -> do
+    case exprs of
+      -- empty list, should infer type
+      [] -> case desiredType of
+        Just (ListType t) -> pure (ListType t)
+        Just _ -> failWith x ErrorUnexpectedTypeForExpression
+        Nothing -> failWith x ErrorAmbiguousList
+      (e:es) -> do
+        -- with some manipulations we can understand desired type
+        eT <- transExpr Nothing e
+        for_ es $ \e' -> do
+          e'T <- transExpr Nothing e'
+          when (e'T /= eT) $
+            failWith e' ErrorUnexpectedTypeForExpression
+        pure $ ListType eT
   Panic pos -> failNotImplemented x
   Throw pos expr -> failNotImplemented x
   TryCatch pos expr1 pattern_ expr2 -> failNotImplemented x
   TryWith pos expr1 expr2 -> failNotImplemented x
-  Inl pos expr -> failNotImplemented x
-  Inr pos expr -> failNotImplemented x
+  Inl pos expr -> case desiredType of
+    Just (SumType std) -> do
+      exprT <- transExpr (Just std.leftType) expr
+      when (exprT /= std.leftType) $
+            failWith expr ErrorUnexpectedTypeForExpression
+      pure $ SumType std
+    Just _ -> failWith x ErrorUnexpectedTypeForExpression
+    Nothing -> failWith x ErrorAmbiguousSumType
+  Inr pos expr -> case desiredType of
+    Just (SumType std) -> do
+      exprT <- transExpr (Just std.rightType) expr
+      when (exprT /= std.rightType) $
+            failWith expr ErrorUnexpectedTypeForExpression
+      pure $ SumType std
+    Just _ -> failWith x ErrorUnexpectedTypeForExpression
+    Nothing -> failWith x ErrorAmbiguousSumType
   Succ pos expr -> do
     exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
@@ -419,6 +457,7 @@ transRecordFieldType x = case x of
     t <- transType type_
     pure (name, t)
 
+-- dead code?
 transTyping :: Typing -> Checker
 transTyping x = case x of
   ATyping pos expr type_ -> failNotImplemented x
