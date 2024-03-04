@@ -41,11 +41,16 @@ data ErrorType
   | ErrorUnexpectedTupleLength
   | ErrorAmbiguousSumType
   | ErrorAmbiguousList
+  | ErrorAmbiguousVariantType
   | ErrorIllegalEmptyMatching
   | ErrorNonExhaustiveMatchPattern
   | ErrorUnexpectedPatternForType
   | ErrorUnimplementedCase
   | ErrorDuplicateRecordFields [Text]
+  | ErrorDuplicatePatternVariable [Text]
+  | ErrorUnexpectedVariantLabel Text
+  | ErrorUnexpectedNonNullaryVariantPattern
+  | ErrorUnexpectedNullaryVariantPattern
 
 renderErrorType :: ErrorType -> Text
 renderErrorType = \case
@@ -74,6 +79,11 @@ renderErrorType = \case
   ErrorUnexpectedPatternForType -> "ERROR_UNEXPECTED_PATTERN_FOR_TYPE"
   ErrorUnimplementedCase -> "ERROR_UNIMPLEMENTED_CASE"
   ErrorDuplicateRecordFields names -> "ERROR_DUPLICATE_RECORD_FIELDS: " <> T.intercalate ", " names
+  ErrorDuplicatePatternVariable names -> "ERROR_DUPLICATE_PATTERN_VARIABLE" <> T.intercalate ", " names
+  ErrorAmbiguousVariantType -> "ERROR_AMBIGUOUS_VARIANT_TYPE"
+  ErrorUnexpectedVariantLabel name -> "ERROR_UNEXPECTED_VARIANT_LABEL: " <> name
+  ErrorUnexpectedNonNullaryVariantPattern -> "ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN: "
+  ErrorUnexpectedNullaryVariantPattern -> "ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN: "
 
 renderStellaError :: StellaError -> Text
 renderStellaError StellaError{..} = "Error: " <>

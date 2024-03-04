@@ -1,9 +1,17 @@
 language core;
-extend with #let-bindings;
 
-type X = Bool
-type Z = X
+extend with #variants, #unit-type;
 
-fn main(n : Nat) -> [Bool] {
-  return let x = [] in x
+fn attempt(get_one? : Bool) -> <| value : Nat, failure |> {
+  return
+    if get_one?
+      then <| value = 0 |>
+      else <| failure |>
+}
+
+fn main(succeed : Bool) -> Nat {
+  return match attempt(succeed) {
+      <| value = n |> => succ(n)
+    | <| failure |> => 0
+  }
 }

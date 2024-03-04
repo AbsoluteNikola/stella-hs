@@ -21,7 +21,7 @@ import Stella.Check.Errors (mkError, ErrorType (..))
 import Control.Monad.IO.Class (liftIO)
 import Text.Pretty.Simple (pPrint)
 import Data.Functor ((<&>))
-import Control.Monad (when)
+import Control.Monad (when, join)
 import Stella.Ast.PrintSyntax (Print)
 import Control.Monad.Reader (ask)
 import qualified Data.List as L
@@ -164,13 +164,13 @@ transType x = case x of
       }
   TypeRecord pos recordfieldtypes -> do
     recordFields <- traverse transRecordFieldType recordfieldtypes
-    checkThatNamesUniq x $ fst <$> recordFields
+    checkThatNamesUniq x ErrorDuplicateRecordFields$ fst <$> recordFields
     pure $ RecordType RecordTypeData
       { recordFields = Map.fromList recordFields
       }
   TypeVariant pos variantfieldtypes -> do
     variantFields <- traverse transVariantFieldType variantfieldtypes
-    checkThatNamesUniq x $ fst <$> variantFields
+    checkThatNamesUniq x ErrorDuplicateRecordFields $ fst <$> variantFields
     pure $ VariantType VariantTypeData
       { variants = Map.fromList variantFields
       }
@@ -203,29 +203,61 @@ transPatternData x = case x of
   NoPatternData pos-> failNotImplemented x
   SomePatternData pos pattern_ -> failNotImplemented x
 
-transExprData :: ExprData -> Checker
-transExprData x = case x of
-  NoExprData pos -> failNotImplemented x
-  SomeExprData  pos expr -> failNotImplemented x
+transExprData :: Maybe SType -> ExprData -> CheckerM (Maybe SType)
+transExprData desiredType x = case x of
+  NoExprData pos -> pure Nothing
+  SomeExprData pos expr -> Just <$> transExpr desiredType expr
+
+-- TODO: add test cases for ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN and ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN
 
 transPattern :: SType -> Pattern -> CheckerM [(Text, SType)]
 transPattern t x = case x of
-  PatternVariant pos (StellaIdent name) patterndata -> failNotImplemented x
+  PatternVariant pos (StellaIdent name) patterndata -> case t of
+    VariantType (VariantTypeData vtd) -> case Map.lookup name vtd of
+      -- more nested cases for god of nested cases
+      Just variantType -> case (variantType, patterndata) of
+        (Nothing, NoPatternData _) -> pure []
+        (Just variantCaseType, SomePatternData pos' pattern) ->
+          transPattern variantCaseType pattern
+        (Nothing, SomePatternData{}) ->
+          failWith x ErrorUnexpectedNonNullaryVariantPattern
+        (Just _, NoPatternData _) ->
+          failWith x ErrorUnexpectedNullaryVariantPattern
+      Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
+    _ -> failWith x ErrorUnexpectedPatternForType
   PatternInl pos pattern_ -> case t of
     SumType std -> transPattern std.leftType pattern_
     _ -> failWith x ErrorUnexpectedPatternForType
   PatternInr pos pattern_ -> case t of
     SumType std -> transPattern std.rightType pattern_
     _ -> failWith x ErrorUnexpectedPatternForType
-  PatternTuple pos patterns -> failNotImplemented x
+  PatternTuple pos patterns -> case t of
+    TupleType (TupleTypeData tupleTypes)
+      | length tupleTypes == length patterns
+      -> do
+        (join -> newVars) <- for (zip tupleTypes patterns) $
+          uncurry transPattern
+        checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+        pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
   PatternRecord pos labelledpatterns -> failNotImplemented x
   PatternList pos patterns -> failNotImplemented x
   PatternCons pos pattern_1 pattern_2 -> failNotImplemented x
-  PatternFalse pos -> failNotImplemented x
-  PatternTrue pos -> failNotImplemented x
-  PatternUnit pos -> failNotImplemented x
-  PatternInt pos integer -> failNotImplemented x
-  PatternSucc pos pattern_ -> failNotImplemented x
+  PatternFalse pos -> case t of
+    SimpleType Boolean -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternTrue pos -> case t of
+    SimpleType Boolean -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternUnit pos -> case t of
+    SimpleType Unit -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternInt pos integer -> case t of
+    SimpleType Unit -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternSucc pos pattern_ -> case t of
+    SimpleType Nat -> transPattern (SimpleType Nat) pattern_
+    _ -> failWith x ErrorUnexpectedPatternForType
   PatternVar pos (StellaIdent name) -> pure [(name, t)]
   PatternAsc _ _ _ -> failNotImplemented x
 
@@ -295,7 +327,17 @@ transExpr desiredType x = case x of
       { argsType = snd <$> paramsTypes
       , returnType = retType
       }
-  Variant pos (StellaIdent name) exprdata -> failNotImplemented x
+  Variant pos (StellaIdent name) exprdata -> case desiredType of
+    Just v@(VariantType (VariantTypeData vtd)) -> case Map.lookup name vtd of
+      Just variantType -> do
+        exprT <- transExprData variantType exprdata
+        -- TODO : ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL
+        when (exprT /= variantType) $
+          failWith x ErrorUnexpectedTypeForExpression
+        pure v
+      Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
+    Just _ -> failWith x ErrorUnexpectedTypeForExpression
+    Nothing -> failWith x ErrorAmbiguousSumType
   Match pos expr matchcases -> do
     exprT <- transExpr Nothing expr
     casesT <- case NE.nonEmpty matchcases of
@@ -347,7 +389,7 @@ transExpr desiredType x = case x of
       }
   Record pos bindings_ -> do
     bindings <- traverse transBinding bindings_
-    checkThatNamesUniq x $ fst <$> bindings
+    checkThatNamesUniq x ErrorDuplicateRecordFields $ fst <$> bindings
     pure $ RecordType RecordTypeData
       { recordFields = Map.fromList bindings
       }
@@ -443,13 +485,13 @@ transPatternBinding x = case x of
     newTerms <- transPattern exprT pattern_
     pure newTerms
 
-transVariantFieldType :: VariantFieldType -> CheckerM (Text, VariantCaseType)
+transVariantFieldType :: VariantFieldType -> CheckerM (Text, Maybe SType)
 transVariantFieldType x = case x of
   AVariantFieldType pos (StellaIdent name) (SomeTyping typingPos type_) -> do
     t <- transType type_
-    pure (name, VariantCaseWithType t)
+    pure (name, Just t)
   AVariantFieldType pos (StellaIdent name) (NoTyping typingPos) -> do
-    pure (name, VariantCaseWithoutType)
+    pure (name, Nothing)
 
 transRecordFieldType :: RecordFieldType -> CheckerM (Text, SType)
 transRecordFieldType x = case x of
@@ -505,10 +547,10 @@ checkFunctionApplication applicationExpr ftd passed = do
     go [] [] = pure ()
     go _ _ = failWith applicationExpr ErrorUnexpectedTypeForAParameter
 
-checkThatNamesUniq :: (HasPosition node, Print node) => node -> [Text] -> CheckerM ()
-checkThatNamesUniq expr names = case filter ((> 1) . snd) counts of
+checkThatNamesUniq :: (HasPosition node, Print node) => node -> ([Text] -> ErrorType) -> [Text] -> CheckerM ()
+checkThatNamesUniq expr errorConstructor names = case filter ((> 1) . snd) counts of
     [] -> pure ()
-    (fmap fst -> nonUniqNames) -> failWith expr (ErrorDuplicateRecordFields nonUniqNames)
+    (fmap fst -> nonUniqNames) -> failWith expr (errorConstructor nonUniqNames)
   where
     counts = map (liftA2 (,) head length) . L.group . L.sort $ names
 

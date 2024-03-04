@@ -11,13 +11,8 @@ newtype RecordTypeData = RecordTypeData
   { recordFields :: Map.Map Text SType
   } deriving (Eq, Show)
 
-data VariantCaseType
-  = VariantCaseWithType SType
-  | VariantCaseWithoutType
-  deriving (Eq, Show)
-
 newtype VariantTypeData = VariantTypeData
-  { variants :: Map.Map Text VariantCaseType
+  { variants :: Map.Map Text (Maybe SType) -- Nothing when variant case used like enum
   } deriving (Eq, Show)
 
 newtype TupleTypeData = TupleTypeData
