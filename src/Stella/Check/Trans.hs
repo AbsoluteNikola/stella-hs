@@ -240,7 +240,12 @@ transPattern t x = case x of
         checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
         pure newVars
     _ -> failWith x ErrorUnexpectedPatternForType
-  PatternRecord pos labelledpatterns -> failNotImplemented x
+  PatternRecord pos labelledpatterns -> case t of
+    RecordType rtd -> do
+      (join -> newVars) <- for labelledpatterns $ transLabelledPattern rtd
+      checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+      pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
   PatternList pos patterns -> case t of
     ListType listInnerType -> do
       (join -> newVars) <- for patterns $ transPattern listInnerType
@@ -273,9 +278,12 @@ transPattern t x = case x of
   PatternVar pos (StellaIdent name) -> pure [(name, t)]
   PatternAsc _ _ _ -> failNotImplemented x
 
-transLabelledPattern :: LabelledPattern -> Checker
-transLabelledPattern x = case x of
-  ALabelledPattern pos (StellaIdent name) pattern_ -> failNotImplemented x
+transLabelledPattern :: RecordTypeData -> LabelledPattern -> CheckerM [(Text, SType)]
+transLabelledPattern (RecordTypeData rtd) x = case x of
+  ALabelledPattern pos (StellaIdent name) pattern_
+    | Just fieldType <- Map.lookup name rtd
+    -> transPattern fieldType pattern_
+  _ -> failWith x ErrorUnexpectedPatternForType
 
 transBinding :: Binding -> CheckerM (Text, SType)
 transBinding x = case x of
