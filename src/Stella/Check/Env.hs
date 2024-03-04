@@ -30,7 +30,7 @@ newtype CheckerM a = CheckerM { unCheckerM :: ReaderT Env (ExceptT StellaError I
   deriving (Functor, Applicative, Monad, MonadReader Env, MonadError StellaError, MonadIO)
 
 withEnv :: Env -> CheckerM a -> CheckerM a
-withEnv env = local (env <>)
+withEnv env = local (<> env)
 
 withTerms :: [(Text, SType)] -> CheckerM a -> CheckerM a
 withTerms terms = local (addTerms terms)

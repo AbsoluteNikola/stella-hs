@@ -241,8 +241,20 @@ transPattern t x = case x of
         pure newVars
     _ -> failWith x ErrorUnexpectedPatternForType
   PatternRecord pos labelledpatterns -> failNotImplemented x
-  PatternList pos patterns -> failNotImplemented x
-  PatternCons pos pattern_1 pattern_2 -> failNotImplemented x
+  PatternList pos patterns -> case t of
+    ListType listInnerType -> do
+      (join -> newVars) <- for patterns $ transPattern listInnerType
+      checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+      pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternCons pos pattern_1 pattern_2 -> case t of
+    ListType listInnerType -> do
+      newVars1 <- transPattern listInnerType pattern_1
+      newVars2 <- transPattern (ListType listInnerType) pattern_2
+      let newVars = newVars1 ++ newVars2
+      checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+      pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
   PatternFalse pos -> case t of
     SimpleType Boolean -> pure []
     _ -> failWith x ErrorUnexpectedPatternForType
@@ -253,7 +265,7 @@ transPattern t x = case x of
     SimpleType Unit -> pure []
     _ -> failWith x ErrorUnexpectedPatternForType
   PatternInt pos integer -> case t of
-    SimpleType Unit -> pure []
+    SimpleType Nat -> pure []
     _ -> failWith x ErrorUnexpectedPatternForType
   PatternSucc pos pattern_ -> case t of
     SimpleType Nat -> transPattern (SimpleType Nat) pattern_
