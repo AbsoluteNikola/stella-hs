@@ -338,13 +338,15 @@ ExprData
 
 Pattern :: { (Stella.Ast.AbsSyntax.BNFC'Position, Stella.Ast.AbsSyntax.Pattern) }
 Pattern
-  : '<|' StellaIdent PatternData '|>' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternVariant (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $3)) }
+  : Pattern 'as' Type { (fst $1, Stella.Ast.AbsSyntax.PatternAsc (fst $1) (snd $1) (snd $3)) }
+  | '<|' StellaIdent PatternData '|>' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternVariant (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $3)) }
   | 'inl' '(' Pattern ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternInl (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
   | 'inr' '(' Pattern ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternInr (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
   | '{' ListPattern '}' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternTuple (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2)) }
   | '{' ListLabelledPattern '}' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternRecord (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2)) }
   | '[' ListPattern ']' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternList (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2)) }
-  | '(' Pattern ',' Pattern ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternCons (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4)) }
+  | 'cons' '(' Pattern ',' Pattern ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternCons (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }
+  | '(' Pattern ',' Pattern ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.patternCons (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4)) }
   | 'false' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternFalse (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1))) }
   | 'true' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternTrue (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1))) }
   | 'unit' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternUnit (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1))) }

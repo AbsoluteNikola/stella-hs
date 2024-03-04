@@ -3,6 +3,9 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+#if __GLASGOW_HASKELL__ <= 708
+{-# LANGUAGE OverlappingInstances #-}
+#endif
 
 -- | Pretty-printer for Stella.
 
@@ -265,13 +268,14 @@ instance Print (Stella.Ast.AbsSyntax.ExprData' a) where
 
 instance Print (Stella.Ast.AbsSyntax.Pattern' a) where
   prt i = \case
+    Stella.Ast.AbsSyntax.PatternAsc _ pattern_ type_ -> prPrec i 0 (concatD [prt 0 pattern_, doc (showString "as"), prt 0 type_])
     Stella.Ast.AbsSyntax.PatternVariant _ stellaident patterndata -> prPrec i 0 (concatD [doc (showString "<|"), prt 0 stellaident, prt 0 patterndata, doc (showString "|>")])
     Stella.Ast.AbsSyntax.PatternInl _ pattern_ -> prPrec i 0 (concatD [doc (showString "inl"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
     Stella.Ast.AbsSyntax.PatternInr _ pattern_ -> prPrec i 0 (concatD [doc (showString "inr"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
     Stella.Ast.AbsSyntax.PatternTuple _ patterns -> prPrec i 0 (concatD [doc (showString "{"), prt 0 patterns, doc (showString "}")])
     Stella.Ast.AbsSyntax.PatternRecord _ labelledpatterns -> prPrec i 0 (concatD [doc (showString "{"), prt 0 labelledpatterns, doc (showString "}")])
     Stella.Ast.AbsSyntax.PatternList _ patterns -> prPrec i 0 (concatD [doc (showString "["), prt 0 patterns, doc (showString "]")])
-    Stella.Ast.AbsSyntax.PatternCons _ pattern_1 pattern_2 -> prPrec i 0 (concatD [doc (showString "("), prt 0 pattern_1, doc (showString ","), prt 0 pattern_2, doc (showString ")")])
+    Stella.Ast.AbsSyntax.PatternCons _ pattern_1 pattern_2 -> prPrec i 0 (concatD [doc (showString "cons"), doc (showString "("), prt 0 pattern_1, doc (showString ","), prt 0 pattern_2, doc (showString ")")])
     Stella.Ast.AbsSyntax.PatternFalse _ -> prPrec i 0 (concatD [doc (showString "false")])
     Stella.Ast.AbsSyntax.PatternTrue _ -> prPrec i 0 (concatD [doc (showString "true")])
     Stella.Ast.AbsSyntax.PatternUnit _ -> prPrec i 0 (concatD [doc (showString "unit")])

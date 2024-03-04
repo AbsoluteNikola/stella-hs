@@ -7,6 +7,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | The abstract syntax of language Syntax.
 
@@ -104,7 +105,8 @@ data ExprData' a = NoExprData a | SomeExprData a (Expr' a)
 
 type Pattern = Pattern' BNFC'Position
 data Pattern' a
-    = PatternVariant a StellaIdent (PatternData' a)
+    = PatternAsc a (Pattern' a) (Type' a)
+    | PatternVariant a StellaIdent (PatternData' a)
     | PatternInl a (Pattern' a)
     | PatternInr a (Pattern' a)
     | PatternTuple a [Pattern' a]
@@ -204,6 +206,9 @@ data RecordFieldType' a = ARecordFieldType a StellaIdent (Type' a)
 type Typing = Typing' BNFC'Position
 data Typing' a = ATyping a (Expr' a) (Type' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable, C.Data, C.Typeable, C.Generic)
+
+patternCons :: a -> Pattern' a -> Pattern' a -> Pattern' a
+patternCons = \ _a h t -> PatternCons _a h t
 
 newtype StellaIdent = StellaIdent Data.Text.Text
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Data, C.Typeable, C.Generic, Data.String.IsString)
@@ -310,6 +315,7 @@ instance HasPosition ExprData where
 
 instance HasPosition Pattern where
   hasPosition = \case
+    PatternAsc p _ _ -> p
     PatternVariant p _ _ -> p
     PatternInl p _ -> p
     PatternInr p _ -> p

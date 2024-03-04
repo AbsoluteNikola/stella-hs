@@ -16,7 +16,7 @@ import Data.Foldable
 import qualified Stella.Check.Env as Env
 import Stella.Check.Env (CheckerM)
 import qualified Data.Map as Map
-import Control.Monad.Except ( MonadError(throwError) )
+import Control.Monad.Except ( MonadError(throwError), foldM )
 import Stella.Check.Errors (mkError, ErrorType (..))
 import Control.Monad.IO.Class (liftIO)
 import Text.Pretty.Simple (pPrint)
@@ -105,7 +105,7 @@ transDecl x = case x of
     let envWithParams = Env.addTerms paramsTypes env
     exprT <- Env.withEnv envWithParams $ do
       traverse_ transDecl decls
-      transExpr expr
+      transExpr (Just retType) expr
     when (retType /= exprT) $
       failWith expr ErrorUnexpectedTypeForExpression
     pure exprT
@@ -195,15 +195,15 @@ transOptionalTyping x = case x of
 transPatternData :: PatternData -> Checker
 transPatternData x = case x of
   NoPatternData pos-> failNotImplemented x
-  SomePatternData  pos pattern_ -> failNotImplemented x
+  SomePatternData pos pattern_ -> failNotImplemented x
 
 transExprData :: ExprData -> Checker
 transExprData x = case x of
   NoExprData pos -> failNotImplemented x
   SomeExprData  pos expr -> failNotImplemented x
 
-transPattern :: Pattern -> Checker
-transPattern x = case x of
+transPattern :: SType -> Pattern -> CheckerM [(Text, SType)]
+transPattern t x = case x of
   PatternVariant pos (StellaIdent name) patterndata -> failNotImplemented x
   PatternInl pos pattern_ -> failNotImplemented x
   PatternInr pos pattern_ -> failNotImplemented x
@@ -216,7 +216,8 @@ transPattern x = case x of
   PatternUnit pos -> failNotImplemented x
   PatternInt pos integer -> failNotImplemented x
   PatternSucc pos pattern_ -> failNotImplemented x
-  PatternVar pos (StellaIdent name) -> failNotImplemented x
+  PatternVar pos (StellaIdent name) -> pure [(name, t)]
+  PatternAsc _ _ _ -> failNotImplemented x
 
 transLabelledPattern :: LabelledPattern -> Checker
 transLabelledPattern x = case x of
@@ -225,33 +226,42 @@ transLabelledPattern x = case x of
 transBinding :: Binding -> CheckerM (Text, SType)
 transBinding x = case x of
   ABinding pos (StellaIdent name) expr -> do
-    type_ <- transExpr expr
+    type_ <- transExpr Nothing expr
     pure (name, type_)
 
 transExpr :: Maybe SType -> Expr -> Checker
 transExpr desiredType x = case x of
   Sequence pos expr1 expr2 -> do
-    expr1Type <- transExpr unit_ expr1
+    expr1Type <- transExpr (Just unit_) expr1
     when (expr1Type /= unit_) $
       failWith expr1 ErrorUnexpectedTypeForExpression
-    expr2Type <- transExpr expr2
+    expr2Type <- transExpr desiredType expr2
     pure expr2Type
   Assign pos expr1 expr2 -> do
-    expr1Type <- transExpr expr1
-    expr2Type <- transExpr expr2
+    expr1Type <- transExpr Nothing expr1
+    expr2Type <- transExpr (Just expr1Type) expr2
     when (expr1Type /= expr2Type) $
       failWith expr1 ErrorUnexpectedTypeForExpression
     pure unit_
   If pos expr1 expr2 expr3 -> do
-    expr1Type <- transExpr expr1
+    expr1Type <- transExpr (Just bool_) expr1
     when (expr1Type /= bool_) $
       failWith expr1 ErrorUnexpectedTypeForExpression
-    expr2Type <- transExpr expr2
-    expr3Type <- transExpr expr3
+    expr2Type <- transExpr desiredType expr2
+    expr3Type <- transExpr (Just expr2Type) expr3
     when (expr2Type /= expr3Type) $
       failWith expr3 ErrorUnexpectedTypeForExpression
     pure expr2Type
-  Let pos patternbindings expr -> failNotImplemented x
+  Let pos patternbindings expr -> do
+    let
+      travBindings :: [(Text, SType)] -> PatternBinding -> CheckerM [(Text, SType)]
+      travBindings newVars binding = Env.withTerms newVars $ do
+        newVarsFromPattern <- transPatternBinding binding
+        pure $ newVars ++ newVarsFromPattern
+    newVars <- foldM travBindings [] patternbindings
+    exprT <- Env.withTerms newVars $ do
+      transExpr desiredType expr
+    pure exprT
   LetRec pos patternbindings expr -> failNotImplemented x
   TypeAbstraction pos stellaidents expr -> failNotImplemented x
   LessThan pos expr1 expr2 -> compareNatsOperator expr1 expr2
@@ -261,18 +271,37 @@ transExpr desiredType x = case x of
   Equal pos expr1 expr2 -> compareNatsOperator expr1 expr2
   NotEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
   TypeAsc pos expr type_ -> do
-    undefined
+    t <- transType type_
+    exprT <- transExpr (Just t) expr
+    when (exprT /= t) $
+      failWith expr ErrorUnexpectedTypeForExpression
+    pure exprT
   TypeCast pos expr type_ -> failNotImplemented x
   Abstraction pos paramdecls expr -> do
     paramsTypes <- traverse transParamDecl paramdecls
-    retType <- Env.withTerms paramsTypes $ transExpr expr
+    -- with some manipulations we can understand desired type
+    retType <- Env.withTerms paramsTypes $ transExpr Nothing expr
     pure $ FuncType FuncTypeData
       { argsType = snd <$> paramsTypes
       , returnType = retType
       }
   Variant pos (StellaIdent name) exprdata -> failNotImplemented x
   Match pos expr matchcases -> failNotImplemented x
-  List pos exprs -> failNotImplemented x
+  List pos exprs -> do
+    case exprs of
+      -- empty list, should infer type
+      [] -> case desiredType of
+        Just (ListType t) -> pure (ListType t)
+        Just _ -> failWith x ErrorUnexpectedTypeForExpression
+        Nothing -> failWith x ErrorAmbiguousList
+      (e:es) -> do
+        -- with some manipulations we can understand desired type
+        eT <- transExpr Nothing e
+        for_ es $ \e' -> do
+          e'T <- transExpr Nothing e'
+          when (e'T /= eT) $
+            failWith e' ErrorUnexpectedTypeForExpression
+        pure $ ListType eT
   Add pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
   Subtract pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
   LogicOr pos expr1 expr2 -> logicOperator expr1 expr2
@@ -282,28 +311,28 @@ transExpr desiredType x = case x of
   Ref pos expr -> failNotImplemented x
   Deref pos expr -> failNotImplemented x
   Application pos func args -> do
-    funcType <- transExpr func >>= \case
+    funcType <- transExpr Nothing func >>= \case
       FuncType ftd -> pure ftd
       _ -> failWith func ErrorNotAFunction
-    (zip args -> argsTypes) <- traverse transExpr args
+    (zip args -> argsTypes) <- traverse (transExpr Nothing) args
     checkFunctionApplication x funcType argsTypes
   TypeApplication pos expr types -> failNotImplemented x
   DotRecord pos expr (StellaIdent name) -> do
-    rtd <- transExpr expr >>= \case
+    rtd <- transExpr Nothing expr >>= \case
       RecordType (RecordTypeData rtd) -> pure rtd
       _ -> failWith expr ErrorNotARecord
     case Map.lookup name rtd of
       Just t -> pure t
       Nothing -> failWith expr (ErrorMissingRecordFields name)
   DotTuple pos expr index -> do
-    ttd <- transExpr expr >>= \case
+    ttd <- transExpr Nothing expr >>= \case
       TupleType (TupleTypeData ttd) -> pure ttd
       _ -> failWith expr ErrorNotATuple
     case ttd !!? (index - 1) of
       Just t -> pure t
       Nothing -> failWith expr (ErrorTupleIndexOutOfBounds index)
   Tuple pos exprs -> do
-    types <- traverse transExpr exprs
+    types <- traverse (transExpr Nothing) exprs
     pure $ TupleType TupleTypeData
       { tupleTypes = types
       }
@@ -313,10 +342,29 @@ transExpr desiredType x = case x of
     pure $ RecordType RecordTypeData
       { recordFields = Map.fromList bindings
       }
-  ConsList pos expr1 expr2 -> failNotImplemented x
-  Head pos expr -> failNotImplemented x
-  IsEmpty pos expr -> failNotImplemented x
-  Tail pos expr -> failNotImplemented x
+  ConsList pos expr1 expr2 -> do
+    listInnerType <- transExpr Nothing expr2 >>= \case
+      ListType listInnerType -> pure listInnerType
+      _ -> failWith expr2 ErrorUnexpectedList
+    expr1T <- transExpr (Just listInnerType) expr1
+    when (expr1T /= listInnerType) $
+      failWith expr1 ErrorUnexpectedTypeForExpression
+    pure $ ListType listInnerType
+  Head pos expr -> do
+    listInnerType <- transExpr Nothing expr >>= \case
+      ListType listInnerType -> pure listInnerType
+      _ -> failWith expr ErrorUnexpectedList
+    pure listInnerType
+  IsEmpty pos expr -> do
+    transExpr Nothing expr >>= \case
+      ListType _ -> pure ()
+      _ -> failWith expr ErrorUnexpectedList
+    pure bool_
+  Tail pos expr -> do
+    listType <- transExpr Nothing expr >>= \case
+      lt@(ListType _) -> pure lt
+      _ -> failWith expr ErrorUnexpectedList
+    pure listType
   Panic pos -> failNotImplemented x
   Throw pos expr -> failNotImplemented x
   TryCatch pos expr1 pattern_ expr2 -> failNotImplemented x
@@ -324,18 +372,18 @@ transExpr desiredType x = case x of
   Inl pos expr -> failNotImplemented x
   Inr pos expr -> failNotImplemented x
   Succ pos expr -> do
-    exprT <- transExpr expr
+    exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
       failWith expr ErrorUnexpectedTypeForExpression
     pure nat_
   LogicNot pos expr -> failNotImplemented x
   Pred pos expr ->  do
-    exprT <- transExpr expr
+    exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
       failWith expr ErrorUnexpectedTypeForExpression
     pure nat_
   IsZero pos expr -> do
-    exprT <- transExpr expr
+    exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
       failWith expr ErrorUnexpectedTypeForExpression
     pure bool_
@@ -350,9 +398,12 @@ transExpr desiredType x = case x of
   ConstMemory pos memoryaddress -> failNotImplemented x
   Var pos (StellaIdent name) -> lookupTermThrow x name
 
-transPatternBinding :: PatternBinding -> Checker
+transPatternBinding :: PatternBinding -> CheckerM [(Text, SType)]
 transPatternBinding x = case x of
-  APatternBinding pos pattern_ expr -> failNotImplemented x
+  APatternBinding pos pattern_ expr -> do
+    exprT <- transExpr Nothing expr
+    newTerms <- transPattern exprT pattern_
+    pure newTerms
 
 transVariantFieldType :: VariantFieldType -> CheckerM (Text, VariantCaseType)
 transVariantFieldType x = case x of
@@ -374,30 +425,30 @@ transTyping x = case x of
 
 compareNatsOperator :: Expr -> Expr -> CheckerM SType
 compareNatsOperator expr1 expr2 =  do
-  expr1Type <- transExpr expr1
+  expr1Type <- transExpr (Just nat_) expr1
   when (expr1Type /= nat_) $
     failWith expr1 ErrorUnexpectedTypeForExpression
-  expr2Type <- transExpr expr1
+  expr2Type <- transExpr (Just nat_) expr1
   when (expr2Type /= nat_) $
     failWith expr1 ErrorUnexpectedTypeForExpression
   pure bool_
 
 arithmeticNatsOperator :: Expr -> Expr -> CheckerM SType
 arithmeticNatsOperator expr1 expr2 =  do
-  expr1Type <- transExpr expr1
+  expr1Type <- transExpr (Just nat_) expr1
   when (expr1Type /= nat_) $
     failWith expr1 ErrorUnexpectedTypeForExpression
-  expr2Type <- transExpr expr1
+  expr2Type <- transExpr (Just nat_) expr1
   when (expr2Type /= nat_) $
     failWith expr1 ErrorUnexpectedTypeForExpression
   pure nat_
 
 logicOperator :: Expr -> Expr -> CheckerM SType
 logicOperator expr1 expr2 =  do
-  expr1Type <- transExpr expr1
+  expr1Type <- transExpr (Just bool_) expr1
   when (expr1Type /= bool_) $
     failWith expr1 ErrorUnexpectedTypeForExpression
-  expr2Type <- transExpr expr1
+  expr2Type <- transExpr (Just bool_) expr1
   when (expr2Type /= bool_) $
     failWith expr1 ErrorUnexpectedTypeForExpression
   pure bool_
