@@ -24,6 +24,8 @@ import Data.Functor ((<&>))
 import Control.Monad (when)
 import Stella.Ast.PrintSyntax (Print)
 import Control.Monad.Reader (ask)
+import qualified Data.List as L
+import Control.Applicative (liftA2)
 
 type Checker = CheckerM SType
 
@@ -146,10 +148,30 @@ transType x = case x of
       }
   TypeForAll pos stellaidents type_ -> failNotImplemented x
   TypeRec pos (StellaIdent name) type_ -> failNotImplemented x
-  TypeSum pos type_1 type_2 -> failNotImplemented x
-  TypeTuple pos types -> failNotImplemented x
-  TypeRecord pos recordfieldtypes -> failNotImplemented x
-  TypeVariant pos variantfieldtypes -> failNotImplemented x
+  TypeSum pos type_1 type_2 -> do
+    t1 <- transType type_1
+    t2 <- transType type_2
+    pure $ SumType SumTypeData
+      { leftType = t1
+      , rightType = t2
+      }
+  TypeTuple pos types' -> do
+    types <- traverse transType types'
+    pure $ TupleType TupleTypeData
+      { tupleTypes = types
+      }
+  TypeRecord pos recordfieldtypes -> do
+    recordFields <- traverse transRecordFieldType recordfieldtypes
+    checkThatNamesUniq x $ fst <$> recordFields
+    pure $ RecordType RecordTypeData
+      { recordFields = Map.fromList recordFields
+      }
+  TypeVariant pos variantfieldtypes -> do
+    variantFields <- traverse transVariantFieldType variantfieldtypes
+    checkThatNamesUniq x $ fst <$> variantFields
+    pure $ VariantType VariantTypeData
+      { variants = Map.fromList variantFields
+      }
   TypeList pos type_ -> do
     innerType <- transType type_
     pure $ ListType innerType
@@ -200,14 +222,16 @@ transLabelledPattern :: LabelledPattern -> Checker
 transLabelledPattern x = case x of
   ALabelledPattern pos (StellaIdent name) pattern_ -> failNotImplemented x
 
-transBinding :: Binding -> Checker
+transBinding :: Binding -> CheckerM (Text, SType)
 transBinding x = case x of
-  ABinding pos (StellaIdent name) expr -> failNotImplemented x
+  ABinding pos (StellaIdent name) expr -> do
+    type_ <- transExpr expr
+    pure (name, type_)
 
-transExpr :: Expr -> Checker
-transExpr x = case x of
+transExpr :: Maybe SType -> Expr -> Checker
+transExpr desiredType x = case x of
   Sequence pos expr1 expr2 -> do
-    expr1Type <- transExpr expr1
+    expr1Type <- transExpr unit_ expr1
     when (expr1Type /= unit_) $
       failWith expr1 ErrorUnexpectedTypeForExpression
     expr2Type <- transExpr expr2
@@ -236,7 +260,8 @@ transExpr x = case x of
   GreaterThanOrEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
   Equal pos expr1 expr2 -> compareNatsOperator expr1 expr2
   NotEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
-  TypeAsc pos expr type_ -> failNotImplemented x
+  TypeAsc pos expr type_ -> do
+    undefined
   TypeCast pos expr type_ -> failNotImplemented x
   Abstraction pos paramdecls expr -> do
     paramsTypes <- traverse transParamDecl paramdecls
@@ -263,10 +288,31 @@ transExpr x = case x of
     (zip args -> argsTypes) <- traverse transExpr args
     checkFunctionApplication x funcType argsTypes
   TypeApplication pos expr types -> failNotImplemented x
-  DotRecord pos expr (StellaIdent name) -> failNotImplemented x
-  DotTuple pos expr integer -> failNotImplemented x
-  Tuple pos exprs -> failNotImplemented x
-  Record pos bindings -> failNotImplemented x
+  DotRecord pos expr (StellaIdent name) -> do
+    rtd <- transExpr expr >>= \case
+      RecordType (RecordTypeData rtd) -> pure rtd
+      _ -> failWith expr ErrorNotARecord
+    case Map.lookup name rtd of
+      Just t -> pure t
+      Nothing -> failWith expr (ErrorMissingRecordFields name)
+  DotTuple pos expr index -> do
+    ttd <- transExpr expr >>= \case
+      TupleType (TupleTypeData ttd) -> pure ttd
+      _ -> failWith expr ErrorNotATuple
+    case ttd !!? (index - 1) of
+      Just t -> pure t
+      Nothing -> failWith expr (ErrorTupleIndexOutOfBounds index)
+  Tuple pos exprs -> do
+    types <- traverse transExpr exprs
+    pure $ TupleType TupleTypeData
+      { tupleTypes = types
+      }
+  Record pos bindings_ -> do
+    bindings <- traverse transBinding bindings_
+    checkThatNamesUniq x $ fst <$> bindings
+    pure $ RecordType RecordTypeData
+      { recordFields = Map.fromList bindings
+      }
   ConsList pos expr1 expr2 -> failNotImplemented x
   Head pos expr -> failNotImplemented x
   IsEmpty pos expr -> failNotImplemented x
@@ -302,22 +348,25 @@ transExpr x = case x of
   ConstUnit pos -> pure unit_
   ConstInt pos integer -> pure nat_
   ConstMemory pos memoryaddress -> failNotImplemented x
-  Var pos (StellaIdent name) -> do
-    Env.lookupTerm name >>= \case
-      Just type_ -> pure type_
-      Nothing -> failWith x ErrorUndefinedVariable
+  Var pos (StellaIdent name) -> lookupTermThrow x name
 
 transPatternBinding :: PatternBinding -> Checker
 transPatternBinding x = case x of
   APatternBinding pos pattern_ expr -> failNotImplemented x
 
-transVariantFieldType :: VariantFieldType -> Checker
+transVariantFieldType :: VariantFieldType -> CheckerM (Text, VariantCaseType)
 transVariantFieldType x = case x of
-  AVariantFieldType pos (StellaIdent name) optionaltyping -> failNotImplemented x
+  AVariantFieldType pos (StellaIdent name) (SomeTyping typingPos type_) -> do
+    t <- transType type_
+    pure (name, VariantCaseWithType t)
+  AVariantFieldType pos (StellaIdent name) (NoTyping typingPos) -> do
+    pure (name, VariantCaseWithoutType)
 
-transRecordFieldType :: RecordFieldType -> Checker
+transRecordFieldType :: RecordFieldType -> CheckerM (Text, SType)
 transRecordFieldType x = case x of
-  ARecordFieldType pos (StellaIdent name) type_ -> failNotImplemented x
+  ARecordFieldType pos (StellaIdent name) type_ -> do
+    t <- transType type_
+    pure (name, t)
 
 transTyping :: Typing -> Checker
 transTyping x = case x of
@@ -360,8 +409,33 @@ checkFunctionApplication applicationExpr ftd passed = do
   where
     go :: {-functions args-} [SType] -> {-passed args-} [(Expr, SType)] -> CheckerM ()
     go (at:ats) ((expr, pa):pas) =
-      if (at /= pa)
-        then failWith expr ErrorNUnexpectedTypeForAParameter
+      if at /= pa
+        then failWith expr ErrorUnexpectedTypeForAParameter
         else go ats pas
     go [] [] = pure ()
-    go _ _ = failWith applicationExpr ErrorNUnexpectedTypeForAParameter
+    go _ _ = failWith applicationExpr ErrorUnexpectedTypeForAParameter
+
+checkThatNamesUniq :: (HasPosition node, Print node) => node -> [Text] -> CheckerM ()
+checkThatNamesUniq expr names = case filter ((> 1) . snd) counts of
+    [] -> pure ()
+    (fmap fst -> nonUniqNames) -> failWith expr (ErrorDuplicateRecordFields nonUniqNames)
+  where
+    counts = map (liftA2 (,) head length) . L.group . L.sort $ names
+
+lookupTermThrow :: (HasPosition node, Print node) => node -> Text -> CheckerM SType
+lookupTermThrow node name = Env.lookupTerm name >>= \case
+  Just type_ -> pure type_
+  Nothing -> failWith node ErrorUndefinedVariable
+
+-- Thanks relude :)
+infix 9 !!?
+(!!?) :: [a] -> Integer -> Maybe a
+(!!?) xs i
+    | i < 0     = Nothing
+    | otherwise = go i xs
+  where
+    go :: Integer -> [a] -> Maybe a
+    go 0 (x:_)  = Just x
+    go j (_:ys) = go (j - 1) ys
+    go _ []     = Nothing
+{-# INLINE (!!?) #-}
