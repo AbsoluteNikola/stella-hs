@@ -4,6 +4,8 @@ import Stella.Ast.AbsSyntax (HasPosition (hasPosition))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Stella.Ast.PrintSyntax (Print, printTree)
+import Stella.Check.Types (SType)
+import Stella.Check.Utils (pp)
 
 data StellaError where
   StellaError :: (HasPosition s, Print s) =>
@@ -21,7 +23,8 @@ mkError node err = StellaError
   }
 
 data ErrorType
-  = ErrorUnexpectedTypeForExpression --  {- Should be -} SType {- actual -} SType
+  = ErrorUnexpectedTypeForExpression {- actual -} SType {- needed -} SType
+  | ErrorUnexpectedTypeForExpressionText Text
   | ErrorMissingMain
   | ErrorUndefinedVariable -- {- name of undefined variable -} Text
   | ErrorNotAFunction
@@ -54,7 +57,11 @@ data ErrorType
 
 renderErrorType :: ErrorType -> Text
 renderErrorType = \case
-  ErrorUnexpectedTypeForExpression -> "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION"
+  ErrorUnexpectedTypeForExpression actual needed ->
+    "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: \n" <>
+    "Expected type: " <> pp needed <> "\n" <>
+    "But got: " <> pp actual
+  ErrorUnexpectedTypeForExpressionText text -> "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: " <> text
   ErrorMissingMain -> "ERROR_MISSING_MAIN"
   ErrorUndefinedVariable -> "ERROR_UNDEFINED_VARIABLE"
   ErrorNotAFunction -> "ERROR_NOT_A_FUNCTION"

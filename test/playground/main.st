@@ -1,17 +1,7 @@
 language core;
 
-extend with #variants, #unit-type;
+extend with #sum-types;
 
-fn attempt(get_one? : Bool) -> <| value : Nat, failure |> {
-  return
-    if get_one?
-      then <| value = 0 |>
-      else <| failure |>
-}
-
-fn main(succeed : Bool) -> Nat {
-  return match attempt(succeed) {
-      <| value = n |> => succ(n)
-    | <| failure |> => 0
-  }
+fn main(n : Nat) -> Nat + Nat {
+  return (fn (a : Nat) { return inl(0) }) (0)
 }

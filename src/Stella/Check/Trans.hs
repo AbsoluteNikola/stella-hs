@@ -28,6 +28,7 @@ import qualified Data.List as L
 import Control.Applicative (liftA2)
 import qualified Data.List.NonEmpty as NE
 import Data.Traversable (for)
+import Stella.Check.Utils (Pretty(pp))
 
 type Checker = CheckerM SType
 
@@ -109,7 +110,7 @@ transDecl x = case x of
       traverse_ transDecl decls
       transExpr (Just retType) expr
     when (retType /= exprT) $
-      failWith expr ErrorUnexpectedTypeForExpression
+      failWith expr (ErrorUnexpectedTypeForExpression exprT retType)
     pure exprT
   DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failNotImplemented x
   DeclTypeAlias pos (StellaIdent name) type_ -> transType type_
@@ -296,23 +297,23 @@ transExpr desiredType x = case x of
   Sequence pos expr1 expr2 -> do
     expr1Type <- transExpr (Just unit_) expr1
     when (expr1Type /= unit_) $
-      failWith expr1 ErrorUnexpectedTypeForExpression
+      failWith expr1 (ErrorUnexpectedTypeForExpression unit_ expr1Type)
     expr2Type <- transExpr desiredType expr2
     pure expr2Type
   Assign pos expr1 expr2 -> do
     expr1Type <- transExpr Nothing expr1
     expr2Type <- transExpr (Just expr1Type) expr2
     when (expr1Type /= expr2Type) $
-      failWith expr1 ErrorUnexpectedTypeForExpression
+      failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type expr2Type
     pure unit_
   If pos expr1 expr2 expr3 -> do
     expr1Type <- transExpr (Just bool_) expr1
     when (expr1Type /= bool_) $
-      failWith expr1 ErrorUnexpectedTypeForExpression
+      failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
     expr2Type <- transExpr desiredType expr2
     expr3Type <- transExpr (Just expr2Type) expr3
     when (expr2Type /= expr3Type) $
-      failWith expr3 ErrorUnexpectedTypeForExpression
+      failWith expr3 $ ErrorUnexpectedTypeForExpression expr2Type expr3Type
     pure expr2Type
   Let pos patternbindings expr -> do
     let
@@ -336,7 +337,7 @@ transExpr desiredType x = case x of
     t <- transType type_
     exprT <- transExpr (Just t) expr
     when (exprT /= t) $
-      failWith expr ErrorUnexpectedTypeForExpression
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT t
     pure exprT
   TypeCast pos expr type_ -> failNotImplemented x
   Abstraction pos paramdecls expr -> do
@@ -352,11 +353,12 @@ transExpr desiredType x = case x of
       Just variantType -> do
         exprT <- transExprData variantType exprdata
         -- TODO : ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL
+        -- TODO: do something with this errors
         when (exprT /= variantType) $
-          failWith x ErrorUnexpectedTypeForExpression
+          failWith x $ ErrorUnexpectedTypeForExpressionText "Invalid type for variant"
         pure v
       Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
-    Just _ -> failWith x ErrorUnexpectedTypeForExpression
+    Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText "Invalid place for variant"
     Nothing -> failWith x ErrorAmbiguousSumType
   Match pos expr matchcases -> do
     exprT <- transExpr Nothing expr
@@ -367,7 +369,7 @@ transExpr desiredType x = case x of
         for_ (NE.tail cases) $ \c -> do
           ct <- transMatchCase desiredType exprT (NE.head cases)
           when (ct /= firstCaseExprT) $
-            failWith expr ErrorUnexpectedTypeForExpression
+            failWith expr (ErrorUnexpectedTypeForExpression ct firstCaseExprT)
         pure firstCaseExprT
     pure casesT
   Add pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
@@ -419,7 +421,7 @@ transExpr desiredType x = case x of
       _ -> failWith expr2 ErrorUnexpectedList
     expr1T <- transExpr (Just listInnerType) expr1
     when (expr1T /= listInnerType) $
-      failWith expr1 ErrorUnexpectedTypeForExpression
+      failWith expr1 $ ErrorUnexpectedTypeForExpression expr1T listInnerType
     pure $ ListType listInnerType
   Head pos expr -> do
     listInnerType <- transExpr Nothing expr >>= \case
@@ -441,7 +443,7 @@ transExpr desiredType x = case x of
       -- empty list, should infer type
       [] -> case desiredType of
         Just (ListType t) -> pure (ListType t)
-        Just _ -> failWith x ErrorUnexpectedTypeForExpression
+        Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got list"
         Nothing -> failWith x ErrorAmbiguousList
       (e:es) -> do
         -- with some manipulations we can understand desired type
@@ -449,7 +451,7 @@ transExpr desiredType x = case x of
         for_ es $ \e' -> do
           e'T <- transExpr Nothing e'
           when (e'T /= eT) $
-            failWith e' ErrorUnexpectedTypeForExpression
+            failWith e' $ ErrorUnexpectedTypeForExpression e'T eT
         pure $ ListType eT
   Panic pos -> failNotImplemented x
   Throw pos expr -> failNotImplemented x
@@ -459,36 +461,61 @@ transExpr desiredType x = case x of
     Just (SumType std) -> do
       exprT <- transExpr (Just std.leftType) expr
       when (exprT /= std.leftType) $
-            failWith expr ErrorUnexpectedTypeForExpression
+        failWith expr $ ErrorUnexpectedTypeForExpression exprT std.leftType
       pure $ SumType std
-    Just _ -> failWith x ErrorUnexpectedTypeForExpression
+    Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got sum type"
     Nothing -> failWith x ErrorAmbiguousSumType
   Inr pos expr -> case desiredType of
     Just (SumType std) -> do
       exprT <- transExpr (Just std.rightType) expr
       when (exprT /= std.rightType) $
-            failWith expr ErrorUnexpectedTypeForExpression
+          failWith expr $ ErrorUnexpectedTypeForExpression exprT std.rightType
       pure $ SumType std
-    Just _ -> failWith x ErrorUnexpectedTypeForExpression
+    Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got sum type"
     Nothing -> failWith x ErrorAmbiguousSumType
   Succ pos expr -> do
     exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
-      failWith expr ErrorUnexpectedTypeForExpression
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
     pure nat_
   LogicNot pos expr -> failNotImplemented x
   Pred pos expr ->  do
     exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
-      failWith expr ErrorUnexpectedTypeForExpression
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
     pure nat_
   IsZero pos expr -> do
     exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
-      failWith expr ErrorUnexpectedTypeForExpression
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
     pure bool_
-  Fix pos expr -> failNotImplemented x
-  NatRec pos expr1 expr2 expr3 -> failNotImplemented x
+  Fix pos expr -> do
+    let
+      desiredTypeForFix = desiredType <&> \t ->
+        FuncType FuncTypeData{argsType = [t], returnType = t}
+    ftd <- transExpr desiredTypeForFix expr >>= \case
+      FuncType ftd
+        | length ftd.argsType == 1 -> pure ftd
+        | otherwise -> failWith expr $ ErrorUnexpectedTypeForExpressionText $ "Expected function with one argument, but got" <> pp ftd
+      _ -> failWith expr ErrorNotAFunction
+    pure (FuncType ftd)
+  NatRec pos expr1 expr2 expr3 -> do
+    untilT <- transExpr (Just nat_) expr1
+    when (untilT /= nat_) $
+      failWith expr1 $ ErrorUnexpectedTypeForExpression untilT nat_
+    startT <- transExpr desiredType expr2
+    let
+      masterFunctionT = FuncType $ FuncTypeData
+        { argsType = [nat_]
+        , returnType = FuncType $ FuncTypeData
+          { argsType = [startT]
+          , returnType = startT
+          }
+        }
+    funcT <- transExpr desiredType expr3
+    when (funcT /= masterFunctionT) $
+      failWith expr3 $ ErrorUnexpectedTypeForExpression funcT masterFunctionT
+    pure startT
   Fold pos type_ expr -> failNotImplemented x
   Unfold pos type_ expr -> failNotImplemented x
   ConstTrue pos -> pure bool_
@@ -528,30 +555,30 @@ compareNatsOperator :: Expr -> Expr -> CheckerM SType
 compareNatsOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just nat_) expr1
   when (expr1Type /= nat_) $
-    failWith expr1 ErrorUnexpectedTypeForExpression
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type nat_
   expr2Type <- transExpr (Just nat_) expr1
   when (expr2Type /= nat_) $
-    failWith expr1 ErrorUnexpectedTypeForExpression
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr2Type nat_
   pure bool_
 
 arithmeticNatsOperator :: Expr -> Expr -> CheckerM SType
 arithmeticNatsOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just nat_) expr1
   when (expr1Type /= nat_) $
-    failWith expr1 ErrorUnexpectedTypeForExpression
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type nat_
   expr2Type <- transExpr (Just nat_) expr1
   when (expr2Type /= nat_) $
-    failWith expr1 ErrorUnexpectedTypeForExpression
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr2Type nat_
   pure nat_
 
 logicOperator :: Expr -> Expr -> CheckerM SType
 logicOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just bool_) expr1
   when (expr1Type /= bool_) $
-    failWith expr1 ErrorUnexpectedTypeForExpression
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
   expr2Type <- transExpr (Just bool_) expr1
   when (expr2Type /= bool_) $
-    failWith expr1 ErrorUnexpectedTypeForExpression
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
   pure bool_
 
 checkFunctionApplication :: {- Application expr -} Expr -> FuncTypeData -> [(Expr, SType)] -> CheckerM SType

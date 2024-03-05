@@ -34,6 +34,7 @@ library
         Stella.Check.Errors
         Stella.Check.Types
         Stella.Check.Env
+        Stella.Check.Utils
         Stella.Check
     build-tool-depends:
         alex:alex,
