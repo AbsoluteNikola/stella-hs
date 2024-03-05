@@ -6,7 +6,7 @@ import System.Directory (listDirectory, getCurrentDirectory)
 import Data.Traversable (for)
 import Data.Text.IO
 import Prelude hiding (readFile)
-import Stella.Check (StellaError, runStellaChecker, renderStellaError)
+import Stella.Check (StellaError(..), runStellaChecker, renderStellaError, renderErrorTypeOnlyCode)
 import Stella.Check.Types (SType)
 import Stella.Ast.ParSyntax (myLexer, pProgram)
 import Data.Either (isRight)
@@ -14,6 +14,7 @@ import Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import Data.Either.Combinators (fromLeft')
 import Data.Text (isInfixOf)
+import qualified Data.Text.IO as T
 
 main :: IO ()
 main = do
@@ -65,6 +66,7 @@ badTestsGen = do
 badTestGen :: FilePath -> String -> FilePath -> IO (Maybe TestTree)
 badTestGen testName errorName filePath = do
   res <- runChecker filePath
+  content <- T.readFile filePath
   case res of
     Left err -> do
       print $ "Broken test, parser fail: " <> filePath <> "\nerror: " <> err
@@ -77,6 +79,7 @@ badTestGen testName errorName filePath = do
             let msg = "Checker should finish with " <> errorName <> " \nBut finished with \n" <>  T.unpack (renderStellaError err)
             assertBool msg $
               T.pack errorName `isInfixOf` renderStellaError err
+                || renderErrorTypeOnlyCode (errorType err) `isInfixOf` content
 
 runChecker :: FilePath -> IO (Either String (Either StellaError SType))
 runChecker path = do

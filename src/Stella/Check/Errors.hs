@@ -1,4 +1,4 @@
-module Stella.Check.Errors (mkError, ErrorType(..), StellaError, renderStellaError) where
+module Stella.Check.Errors where
 
 import Stella.Ast.AbsSyntax (HasPosition (hasPosition))
 import Data.Text (Text)
@@ -54,14 +54,13 @@ data ErrorType
   | ErrorUnexpectedVariantLabel Text
   | ErrorUnexpectedNonNullaryVariantPattern
   | ErrorUnexpectedNullaryVariantPattern
+  | ErrorIncorrectArityOfMain Int
+  | ErrorIncorrectNumberOfArguments Int
 
-renderErrorType :: ErrorType -> Text
-renderErrorType = \case
-  ErrorUnexpectedTypeForExpression actual needed ->
-    "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: \n" <>
-    "Expected type: " <> pp needed <> "\n" <>
-    "But got: " <> pp actual
-  ErrorUnexpectedTypeForExpressionText text -> "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: " <> text
+renderErrorTypeOnlyCode ::  ErrorType -> Text
+renderErrorTypeOnlyCode = \case
+  ErrorUnexpectedTypeForExpression{} -> "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION"
+  ErrorUnexpectedTypeForExpressionText{} -> "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION"
   ErrorMissingMain -> "ERROR_MISSING_MAIN"
   ErrorUndefinedVariable -> "ERROR_UNDEFINED_VARIABLE"
   ErrorNotAFunction -> "ERROR_NOT_A_FUNCTION"
@@ -74,10 +73,10 @@ renderErrorType = \case
   ErrorUnexpectedRecord -> "ERROR_UNEXPECTED_RECORD"
   ErrorUnexpectedList -> "ERROR_UNEXPECTED_LIST"
   ErrorUnexpectedInjection -> "ERROR_UNEXPECTED_INJECTION"
-  ErrorMissingRecordFields name -> "ERROR_MISSING_RECORD_FIELDS: " <> name
+  ErrorMissingRecordFields{} -> "ERROR_MISSING_RECORD_FIELDS"
   ErrorUnexpectedRecordFields -> "ERROR_UNEXPECTED_RECORD_FIELDS"
   ErrorUnexpectedFieldAccess -> "ERROR_UNEXPECTED_FIELD_ACCESS"
-  ErrorTupleIndexOutOfBounds index -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS: " <> T.pack (show index)
+  ErrorTupleIndexOutOfBounds{} -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS"
   ErrorUnexpectedTupleLength -> "ERROR_UNEXPECTED_TUPLE_LENGTH"
   ErrorAmbiguousSumType -> "ERROR_AMBIGUOUS_SUM_TYPE"
   ErrorAmbiguousList -> "ERROR_AMBIGUOUS_LIST"
@@ -85,12 +84,30 @@ renderErrorType = \case
   ErrorNonExhaustiveMatchPattern -> "ERROR_NONEXHAUSTIVE_MATCH_PATTERNS"
   ErrorUnexpectedPatternForType -> "ERROR_UNEXPECTED_PATTERN_FOR_TYPE"
   ErrorUnimplementedCase -> "ERROR_UNIMPLEMENTED_CASE"
-  ErrorDuplicateRecordFields names -> "ERROR_DUPLICATE_RECORD_FIELDS: " <> T.intercalate ", " names
-  ErrorDuplicatePatternVariable names -> "ERROR_DUPLICATE_PATTERN_VARIABLE" <> T.intercalate ", " names
+  ErrorDuplicateRecordFields{} -> "ERROR_DUPLICATE_RECORD_FIELDS"
+  ErrorDuplicatePatternVariable{} -> "ERROR_DUPLICATE_PATTERN_VARIABLE"
   ErrorAmbiguousVariantType -> "ERROR_AMBIGUOUS_VARIANT_TYPE"
-  ErrorUnexpectedVariantLabel name -> "ERROR_UNEXPECTED_VARIANT_LABEL: " <> name
-  ErrorUnexpectedNonNullaryVariantPattern -> "ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN: "
-  ErrorUnexpectedNullaryVariantPattern -> "ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN: "
+  ErrorUnexpectedVariantLabel{} -> "ERROR_UNEXPECTED_VARIANT_LABEL"
+  ErrorUnexpectedNonNullaryVariantPattern -> "ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN"
+  ErrorUnexpectedNullaryVariantPattern -> "ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN"
+  ErrorIncorrectArityOfMain{} -> "ERROR_INCORRECT_ARITY_OF_MAIN"
+  ErrorIncorrectNumberOfArguments{} -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
+
+renderErrorType :: ErrorType -> Text
+renderErrorType t = case t of
+  ErrorUnexpectedTypeForExpression actual needed ->
+    renderErrorTypeOnlyCode t <> ": " <>
+    "Expected type: " <> pp needed <> "\n" <>
+    "But got: " <> pp actual
+  ErrorUnexpectedTypeForExpressionText text -> renderErrorTypeOnlyCode t <> ": " <> text
+  ErrorMissingRecordFields name -> renderErrorTypeOnlyCode t <> ": " <> name
+  ErrorTupleIndexOutOfBounds index -> renderErrorTypeOnlyCode t <> ": " <> T.pack (show index)
+  ErrorDuplicateRecordFields names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
+  ErrorDuplicatePatternVariable names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
+  ErrorUnexpectedVariantLabel name -> renderErrorTypeOnlyCode t <> ": " <> name
+  ErrorIncorrectArityOfMain n -> renderErrorTypeOnlyCode t <> ": " <> pp n
+  ErrorIncorrectNumberOfArguments n -> renderErrorTypeOnlyCode t <> ": " <> pp n
+  _ -> renderErrorTypeOnlyCode t
 
 renderStellaError :: StellaError -> Text
 renderStellaError StellaError{..} = "Error: " <>

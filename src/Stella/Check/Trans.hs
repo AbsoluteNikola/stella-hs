@@ -53,7 +53,9 @@ transProgram x = case x of
     Env.withEnv env $
       for_ decls transDecl
     mainFunction <-  case Map.lookup "main" env.termsEnv of
-      Just (FuncType ftd) -> pure ftd
+      Just (FuncType ftd)
+        | length ftd.argsType == 1 -> pure ftd
+        | otherwise -> failWith x (ErrorIncorrectArityOfMain $ length ftd.argsType)
       _ -> failWith x ErrorMissingMain
     pure mainFunction.returnType
 
@@ -341,9 +343,12 @@ transExpr desiredType x = case x of
     pure exprT
   TypeCast pos expr type_ -> failNotImplemented x
   Abstraction pos paramdecls expr -> do
+    mDesiredRetType <- case desiredType of
+      Nothing -> pure Nothing
+      Just (FuncType ftd) -> pure $ Just ftd.returnType
+      Just _ -> failWith x ErrorUnexpectedLambda
     paramsTypes <- traverse transParamDecl paramdecls
-    -- with some manipulations we can understand desired type
-    retType <- Env.withTerms paramsTypes $ transExpr Nothing expr
+    retType <- Env.withTerms paramsTypes $ transExpr mDesiredRetType expr
     let
       funcT = FuncType FuncTypeData
         { argsType = snd <$> paramsTypes
@@ -384,7 +389,10 @@ transExpr desiredType x = case x of
   Deref pos expr -> failNotImplemented x
   Application pos func args -> do
     funcType <- transExpr Nothing func >>= \case
-      FuncType ftd -> pure ftd
+      FuncType ftd
+        | length ftd.argsType /= length args
+        -> failWith x (ErrorIncorrectNumberOfArguments $ length args)
+        | otherwise -> pure ftd
       _ -> failWith func ErrorNotAFunction
     argsWithTypes <-
       for (zip args funcType.argsType) $ \(expr, t) ->
@@ -420,7 +428,7 @@ transExpr desiredType x = case x of
   ConsList pos expr1 expr2 -> do
     listInnerType <- transExpr Nothing expr2 >>= \case
       ListType listInnerType -> pure listInnerType
-      _ -> failWith expr2 ErrorUnexpectedList
+      _ -> failWith expr2 ErrorNotAList
     expr1T <- transExpr (Just listInnerType) expr1
     when (expr1T /= listInnerType) $
       failWith expr1 $ ErrorUnexpectedTypeForExpression expr1T listInnerType
@@ -428,17 +436,17 @@ transExpr desiredType x = case x of
   Head pos expr -> do
     listInnerType <- transExpr Nothing expr >>= \case
       ListType listInnerType -> pure listInnerType
-      _ -> failWith expr ErrorUnexpectedList
+      _ -> failWith expr ErrorNotAList
     pure listInnerType
   IsEmpty pos expr -> do
     transExpr Nothing expr >>= \case
       ListType _ -> pure ()
-      _ -> failWith expr ErrorUnexpectedList
+      _ -> failWith expr ErrorNotAList
     pure bool_
   Tail pos expr -> do
     listType <- transExpr Nothing expr >>= \case
       lt@(ListType _) -> pure lt
-      _ -> failWith expr ErrorUnexpectedList
+      _ -> failWith expr ErrorNotAList
     pure listType
   List pos exprs -> do
     case exprs of
