@@ -344,10 +344,12 @@ transExpr desiredType x = case x of
     paramsTypes <- traverse transParamDecl paramdecls
     -- with some manipulations we can understand desired type
     retType <- Env.withTerms paramsTypes $ transExpr Nothing expr
-    pure $ FuncType FuncTypeData
-      { argsType = snd <$> paramsTypes
-      , returnType = retType
-      }
+    let
+      funcT = FuncType FuncTypeData
+        { argsType = snd <$> paramsTypes
+        , returnType = retType
+        }
+    pure funcT
   Variant pos (StellaIdent name) exprdata -> case desiredType of
     Just v@(VariantType (VariantTypeData vtd)) -> case Map.lookup name vtd of
       Just variantType -> do
@@ -498,7 +500,7 @@ transExpr desiredType x = case x of
         | length ftd.argsType == 1 -> pure ftd
         | otherwise -> failWith expr $ ErrorUnexpectedTypeForExpressionText $ "Expected function with one argument, but got" <> pp ftd
       _ -> failWith expr ErrorNotAFunction
-    pure (FuncType ftd)
+    pure ftd.returnType
   NatRec pos expr1 expr2 expr3 -> do
     untilT <- transExpr (Just nat_) expr1
     when (untilT /= nat_) $
