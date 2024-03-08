@@ -74,7 +74,7 @@ badTestGen testName errorName filePath = do
     Right checkerRes ->
       pure $ Just $ testCase testName $
         case checkerRes of
-          Right _ -> assertFailure "Test should not suncceed"
+          Right _ -> assertFailure "Test should not succeed"
           Left err -> do
             let msg = "Checker should finish with " <> errorName <> " \nBut finished with \n" <>  T.unpack (renderStellaError err)
             assertBool msg $

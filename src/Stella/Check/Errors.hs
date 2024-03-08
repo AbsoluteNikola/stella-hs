@@ -39,7 +39,7 @@ data ErrorType
   | ErrorUnexpectedInjection
   | ErrorMissingRecordFields Text
   | ErrorUnexpectedRecordFields
-  | ErrorUnexpectedFieldAccess
+  | ErrorUnexpectedFieldAccess Text
   | ErrorTupleIndexOutOfBounds Integer
   | ErrorUnexpectedTupleLength
   | ErrorAmbiguousSumType
@@ -52,10 +52,13 @@ data ErrorType
   | ErrorDuplicateRecordFields [Text]
   | ErrorDuplicatePatternVariable [Text]
   | ErrorUnexpectedVariantLabel Text
+  | ErrorUnexpectedVariant (Maybe SType)
+  | ErrorMissingDataForLabel Text
   | ErrorUnexpectedNonNullaryVariantPattern
   | ErrorUnexpectedNullaryVariantPattern
   | ErrorIncorrectArityOfMain Int
   | ErrorIncorrectNumberOfArguments Int
+  | ErrorUnexpectedDataForNullaryLabel SType
 
 renderErrorTypeOnlyCode ::  ErrorType -> Text
 renderErrorTypeOnlyCode = \case
@@ -75,7 +78,7 @@ renderErrorTypeOnlyCode = \case
   ErrorUnexpectedInjection -> "ERROR_UNEXPECTED_INJECTION"
   ErrorMissingRecordFields{} -> "ERROR_MISSING_RECORD_FIELDS"
   ErrorUnexpectedRecordFields -> "ERROR_UNEXPECTED_RECORD_FIELDS"
-  ErrorUnexpectedFieldAccess -> "ERROR_UNEXPECTED_FIELD_ACCESS"
+  ErrorUnexpectedFieldAccess{} -> "ERROR_UNEXPECTED_FIELD_ACCESS"
   ErrorTupleIndexOutOfBounds{} -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS"
   ErrorUnexpectedTupleLength -> "ERROR_UNEXPECTED_TUPLE_LENGTH"
   ErrorAmbiguousSumType -> "ERROR_AMBIGUOUS_SUM_TYPE"
@@ -87,11 +90,14 @@ renderErrorTypeOnlyCode = \case
   ErrorDuplicateRecordFields{} -> "ERROR_DUPLICATE_RECORD_FIELDS"
   ErrorDuplicatePatternVariable{} -> "ERROR_DUPLICATE_PATTERN_VARIABLE"
   ErrorAmbiguousVariantType -> "ERROR_AMBIGUOUS_VARIANT_TYPE"
+  ErrorUnexpectedVariant{} -> "ERROR_UNEXPECTED_VARIANT"
   ErrorUnexpectedVariantLabel{} -> "ERROR_UNEXPECTED_VARIANT_LABEL"
+  ErrorMissingDataForLabel{} -> "ERROR_MISSING_DATA_FOR_LABEL"
   ErrorUnexpectedNonNullaryVariantPattern -> "ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN"
   ErrorUnexpectedNullaryVariantPattern -> "ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN"
   ErrorIncorrectArityOfMain{} -> "ERROR_INCORRECT_ARITY_OF_MAIN"
   ErrorIncorrectNumberOfArguments{} -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
+  ErrorUnexpectedDataForNullaryLabel{} -> "ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL"
 
 renderErrorType :: ErrorType -> Text
 renderErrorType t = case t of
@@ -104,9 +110,14 @@ renderErrorType t = case t of
   ErrorTupleIndexOutOfBounds index -> renderErrorTypeOnlyCode t <> ": " <> T.pack (show index)
   ErrorDuplicateRecordFields names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
   ErrorDuplicatePatternVariable names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
+  ErrorUnexpectedVariant Nothing -> renderErrorTypeOnlyCode t
+  ErrorUnexpectedVariant (Just type_) -> renderErrorTypeOnlyCode t <> ": " <> pp type_
   ErrorUnexpectedVariantLabel name -> renderErrorTypeOnlyCode t <> ": " <> name
   ErrorIncorrectArityOfMain n -> renderErrorTypeOnlyCode t <> ": " <> pp n
   ErrorIncorrectNumberOfArguments n -> renderErrorTypeOnlyCode t <> ": " <> pp n
+  ErrorUnexpectedFieldAccess n -> renderErrorTypeOnlyCode t <> ": " <> pp n
+  ErrorMissingDataForLabel n -> renderErrorTypeOnlyCode t <> ": " <> pp n
+  ErrorUnexpectedDataForNullaryLabel type_ -> renderErrorTypeOnlyCode t <> ": " <> pp type_
   _ -> renderErrorTypeOnlyCode t
 
 renderStellaError :: StellaError -> Text

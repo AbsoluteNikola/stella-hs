@@ -211,8 +211,6 @@ transExprData desiredType x = case x of
   NoExprData pos -> pure Nothing
   SomeExprData pos expr -> Just <$> transExpr desiredType expr
 
--- TODO: add test cases for ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN and ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN
-
 transPattern :: SType -> Pattern -> CheckerM [(Text, SType)]
 transPattern t x = case x of
   PatternVariant pos (StellaIdent name) patterndata -> case t of
@@ -226,7 +224,7 @@ transPattern t x = case x of
           failWith x ErrorUnexpectedNonNullaryVariantPattern
         (Just _, NoPatternData _) ->
           failWith x ErrorUnexpectedNullaryVariantPattern
-      Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
+      Nothing -> failWith x ErrorUnexpectedPatternForType
     _ -> failWith x ErrorUnexpectedPatternForType
   PatternInl pos pattern_ -> case t of
     SumType std -> transPattern std.leftType pattern_
@@ -346,7 +344,7 @@ transExpr desiredType x = case x of
     mDesiredRetType <- case desiredType of
       Nothing -> pure Nothing
       Just (FuncType ftd) -> pure $ Just ftd.returnType
-      Just _ -> failWith x ErrorUnexpectedLambda
+      Just _ -> pure Nothing
     paramsTypes <- traverse transParamDecl paramdecls
     retType <- Env.withTerms paramsTypes $ transExpr mDesiredRetType expr
     let
@@ -359,13 +357,16 @@ transExpr desiredType x = case x of
     Just v@(VariantType (VariantTypeData vtd)) -> case Map.lookup name vtd of
       Just variantType -> do
         exprT <- transExprData variantType exprdata
-        -- TODO : ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL
-        -- TODO: do something with this errors
-        when (exprT /= variantType) $
-          failWith x $ ErrorUnexpectedTypeForExpressionText "Invalid type for variant"
+        case (exprT, variantType) of
+          (Nothing, Nothing) -> pure ()
+          (Just et, Just vt)
+            | et == vt -> pure ()
+            | otherwise -> failWith x $ ErrorUnexpectedTypeForExpression et vt
+          (Nothing, Just vt ) -> failWith x $ ErrorMissingDataForLabel name
+          (Just et, Nothing) -> failWith x $ ErrorUnexpectedDataForNullaryLabel et
         pure v
       Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
-    Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText "Invalid place for variant"
+    Just dt -> failWith x $ ErrorUnexpectedVariant (Just dt)
     Nothing -> failWith x ErrorAmbiguousSumType
   Match pos expr matchcases -> do
     exprT <- transExpr Nothing expr
@@ -374,7 +375,7 @@ transExpr desiredType x = case x of
       Just cases -> do
         firstCaseExprT <- transMatchCase desiredType exprT (NE.head cases)
         for_ (NE.tail cases) $ \c -> do
-          ct <- transMatchCase desiredType exprT (NE.head cases)
+          ct <- transMatchCase desiredType exprT c
           when (ct /= firstCaseExprT) $
             failWith expr (ErrorUnexpectedTypeForExpression ct firstCaseExprT)
         pure firstCaseExprT
@@ -406,7 +407,7 @@ transExpr desiredType x = case x of
       _ -> failWith expr ErrorNotARecord
     case Map.lookup name rtd of
       Just t -> pure t
-      Nothing -> failWith expr (ErrorMissingRecordFields name)
+      Nothing -> failWith expr (ErrorUnexpectedFieldAccess name)
   DotTuple pos expr index -> do
     ttd <- transExpr Nothing expr >>= \case
       TupleType (TupleTypeData ttd) -> pure ttd
@@ -473,7 +474,7 @@ transExpr desiredType x = case x of
       when (exprT /= std.leftType) $
         failWith expr $ ErrorUnexpectedTypeForExpression exprT std.leftType
       pure $ SumType std
-    Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got sum type"
+    Just dt -> failWith x ErrorUnexpectedInjection
     Nothing -> failWith x ErrorAmbiguousSumType
   Inr pos expr -> case desiredType of
     Just (SumType std) -> do
@@ -481,7 +482,7 @@ transExpr desiredType x = case x of
       when (exprT /= std.rightType) $
           failWith expr $ ErrorUnexpectedTypeForExpression exprT std.rightType
       pure $ SumType std
-    Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got sum type"
+    Just dt -> failWith x ErrorUnexpectedInjection
     Nothing -> failWith x ErrorAmbiguousSumType
   Succ pos expr -> do
     exprT <- transExpr (Just nat_) expr
@@ -599,7 +600,7 @@ checkFunctionApplication applicationExpr ftd passed = do
     go :: {-functions args-} [SType] -> {-passed args-} [(Expr, SType)] -> CheckerM ()
     go (at:ats) ((expr, pa):pas) =
       if at /= pa
-        then failWith expr ErrorUnexpectedTypeForAParameter
+        then failWith expr $ ErrorUnexpectedTypeForExpression at pa
         else go ats pas
     go [] [] = pure ()
     go _ _ = failWith applicationExpr ErrorUnexpectedTypeForAParameter
