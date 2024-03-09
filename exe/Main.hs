@@ -21,6 +21,7 @@ import Stella.Ast.PrintSyntax ( printTree )
 import Stella.Check
 import Text.Pretty.Simple (pPrint)
 import qualified Data.Text as T
+import Stella.Check.Utils (pp)
 
 type Err        = Either String
 type ParseFun a = [Token] -> Err Program
@@ -56,7 +57,7 @@ showTree v tree = do
   putStrV v $ "\n[Type checker result]\n\n"
   typeCheckerRes <- runStellaChecker tree
   case typeCheckerRes of
-    Right t -> putStrLn $ "Ok: " <> show t
+    Right t -> putStrLn $ "Ok: " <> T.unpack (pp t)
     Left err -> do
       putStrLn $ T.unpack $ renderStellaError err
       exitFailure
