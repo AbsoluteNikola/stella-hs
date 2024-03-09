@@ -59,6 +59,7 @@ data ErrorType
   | ErrorIncorrectArityOfMain Int
   | ErrorIncorrectNumberOfArguments Int
   | ErrorUnexpectedDataForNullaryLabel SType
+  | ErrorAmbiguousPatternType Text
 
 renderErrorTypeOnlyCode ::  ErrorType -> Text
 renderErrorTypeOnlyCode = \case
@@ -98,6 +99,7 @@ renderErrorTypeOnlyCode = \case
   ErrorIncorrectArityOfMain{} -> "ERROR_INCORRECT_ARITY_OF_MAIN"
   ErrorIncorrectNumberOfArguments{} -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
   ErrorUnexpectedDataForNullaryLabel{} -> "ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL"
+  ErrorAmbiguousPatternType{} -> "ERROR_AMBIGUOUS_PATTERN_TYPE"
 
 renderErrorType :: ErrorType -> Text
 renderErrorType t = case t of
@@ -118,6 +120,7 @@ renderErrorType t = case t of
   ErrorUnexpectedFieldAccess n -> renderErrorTypeOnlyCode t <> ": " <> pp n
   ErrorMissingDataForLabel n -> renderErrorTypeOnlyCode t <> ": " <> pp n
   ErrorUnexpectedDataForNullaryLabel type_ -> renderErrorTypeOnlyCode t <> ": " <> pp type_
+  ErrorAmbiguousPatternType text -> renderErrorTypeOnlyCode t <> ": " <> pp text
   _ -> renderErrorTypeOnlyCode t
 
 renderStellaError :: StellaError -> Text

@@ -278,7 +278,11 @@ transPattern t x = case x of
     SimpleType Nat -> transPattern (SimpleType Nat) pattern_
     _ -> failWith x ErrorUnexpectedPatternForType
   PatternVar pos (StellaIdent name) -> pure [(name, t)]
-  PatternAsc _ _ _ -> failNotImplemented x
+  PatternAsc pos pattern type_ -> do
+    patT <- transType type_
+    when (patT /= t) $
+      failWith x ErrorUnexpectedPatternForType
+    transPattern patT pattern
 
 transLabelledPattern :: RecordTypeData -> LabelledPattern -> CheckerM [(Text, SType)]
 transLabelledPattern (RecordTypeData rtd) x = case x of
@@ -326,7 +330,16 @@ transExpr desiredType x = case x of
     exprT <- Env.withTerms newVars $ do
       transExpr desiredType expr
     pure exprT
-  LetRec pos patternbindings expr -> failNotImplemented x
+  LetRec pos patternbindings expr -> do
+    let
+      travBindings :: [(Text, SType)] -> PatternBinding -> CheckerM [(Text, SType)]
+      travBindings newVars binding = Env.withTerms newVars $ do
+        newVarsFromPattern <- transLetRecPatternBinding binding
+        pure $ newVars ++ newVarsFromPattern
+    newVars <- foldM travBindings [] patternbindings
+    exprT <- Env.withTerms newVars $ do
+      transExpr desiredType expr
+    pure exprT
   TypeAbstraction pos stellaidents expr -> failNotImplemented x
   LessThan pos expr1 expr2 -> compareNatsOperator expr1 expr2
   LessThanOrEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
@@ -368,7 +381,7 @@ transExpr desiredType x = case x of
         pure v
       Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
     Just dt -> failWith x $ ErrorUnexpectedVariant (Just dt)
-    Nothing -> failWith x ErrorAmbiguousSumType
+    Nothing -> failWith x ErrorAmbiguousVariantType
   Match pos expr matchcases -> do
     exprT <- transExpr Nothing expr
     casesT <- case NE.nonEmpty matchcases of
@@ -431,13 +444,11 @@ transExpr desiredType x = case x of
       { recordFields = Map.fromList bindings
       }
   ConsList pos expr1 expr2 -> do
-    listInnerType <- transExpr Nothing expr2 >>= \case
-      ListType listInnerType -> pure listInnerType
-      _ -> failWith expr2 ErrorNotAList
-    expr1T <- transExpr (Just listInnerType) expr1
-    when (expr1T /= listInnerType) $
-      failWith expr1 $ ErrorUnexpectedTypeForExpression expr1T listInnerType
-    pure $ ListType listInnerType
+    expr1T <- transExpr Nothing expr1
+    expr2T <- transExpr (Just $ ListType expr1T) expr2
+    when (ListType expr1T /= expr2T) $
+      failWith expr1 $ ErrorUnexpectedTypeForExpression (ListType expr1T) expr2T
+    pure $ ListType expr1T
   Head pos expr -> do
     listInnerType <- transExpr Nothing expr >>= \case
       ListType listInnerType -> pure listInnerType
@@ -493,7 +504,11 @@ transExpr desiredType x = case x of
     when (exprT /= nat_) $
       failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
     pure nat_
-  LogicNot pos expr -> failNotImplemented x
+  LogicNot pos expr -> do
+    exprT <- transExpr (Just bool_) expr
+    when (exprT /= bool_) $
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT bool_
+    pure nat_
   Pred pos expr ->  do
     exprT <- transExpr (Just nat_) expr
     when (exprT /= nat_) $
@@ -546,6 +561,16 @@ transPatternBinding x = case x of
     exprT <- transExpr Nothing expr
     newTerms <- transPattern exprT pattern_
     pure newTerms
+
+transLetRecPatternBinding :: PatternBinding -> CheckerM [(Text, SType)]
+transLetRecPatternBinding x = case x of
+  APatternBinding pos (PatternAsc _ (PatternVar _ (StellaIdent name)) type_) expr -> do
+    asT <- transType type_
+    exprT <- Env.withTerms [(name, asT)] $ transExpr (Just asT) expr
+    when (asT /= exprT) $
+      failWith x $ ErrorUnexpectedTypeForExpression asT exprT
+    pure [(name, asT)]
+  _ -> failWith x $ ErrorAmbiguousPatternType "Let rec supported only with 'letrec x as T = x' pattern"
 
 transVariantFieldType :: VariantFieldType -> CheckerM (Text, Maybe SType)
 transVariantFieldType x = case x of
