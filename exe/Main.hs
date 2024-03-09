@@ -55,9 +55,11 @@ showTree v tree = do
   putStrV v $ "\n[Linearized tree]\n\n" ++ printTree tree
   putStrV v $ "\n[Type checker result]\n\n"
   typeCheckerRes <- runStellaChecker tree
-  putStrLn $ case typeCheckerRes of
-    Right t -> "Ok: " <> show t
-    Left err -> T.unpack $ renderStellaError err
+  case typeCheckerRes of
+    Right t -> putStrLn $ "Ok: " <> show t
+    Left err -> do
+      putStrLn $ T.unpack $ renderStellaError err
+      exitFailure
 
 usage :: IO ()
 usage = do

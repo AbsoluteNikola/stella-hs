@@ -21,7 +21,7 @@ import Stella.Check.Errors (mkError, ErrorType (..))
 import Control.Monad.IO.Class (liftIO)
 import Text.Pretty.Simple (pPrint)
 import Data.Functor ((<&>))
-import Control.Monad (when, join)
+import Control.Monad (when, join, unless)
 import Stella.Ast.PrintSyntax (Print)
 import Control.Monad.Reader (ask)
 import qualified Data.List as L
@@ -29,6 +29,7 @@ import Control.Applicative (liftA2)
 import qualified Data.List.NonEmpty as NE
 import Data.Traversable (for)
 import Stella.Check.Utils (Pretty(pp))
+import Stella.Check.Exhaustiveness (checkPatternsExhaustive)
 
 type Checker = CheckerM SType
 
@@ -378,6 +379,9 @@ transExpr desiredType x = case x of
           ct <- transMatchCase desiredType exprT c
           when (ct /= firstCaseExprT) $
             failWith expr (ErrorUnexpectedTypeForExpression ct firstCaseExprT)
+        let patterns = cases <&> \(AMatchCase _ pattern _) -> pattern
+        unless (checkPatternsExhaustive exprT patterns) $
+          failWith x ErrorNonExhaustiveMatchPattern
         pure firstCaseExprT
     pure casesT
   Add pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
