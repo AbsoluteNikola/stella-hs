@@ -3,204 +3,658 @@
 -- Templates for pattern matching on abstract syntax
 
 {-# OPTIONS_GHC -fno-warn-unused-matches #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant pure" #-}
 
 module Stella.Check.Trans where
 
 import Prelude
 import Stella.Ast.AbsSyntax
+import Stella.Check.Types
+import Data.Text (Text)
+import Data.Foldable
+import qualified Stella.Check.Env as Env
+import Stella.Check.Env (CheckerM)
+import qualified Data.Map as Map
+import Control.Monad.Except ( MonadError(throwError))
+import Stella.Check.Errors (mkError, ErrorType (..))
+import Control.Monad.IO.Class (liftIO)
+import Text.Pretty.Simple (pPrint)
+import Data.Functor ((<&>))
+import Control.Monad (when, join, unless, foldM)
+import Stella.Ast.PrintSyntax (Print)
+import Control.Monad.Reader (ask)
+import qualified Data.List as L
+import Control.Applicative (liftA2)
+import qualified Data.List.NonEmpty as NE
+import Data.Traversable (for)
+import Stella.Check.Utils (Pretty(pp))
+import Stella.Check.Exhaustiveness (checkPatternsExhaustive)
 
-type Err = Either String
-type Result = Err String
+type Checker = CheckerM SType
 
-failure :: Show a => a -> Result
-failure x = Left $ "Undefined case: " ++ show x
+failNotImplemented :: forall a b. (HasPosition a, Print a) => a -> CheckerM b
+failNotImplemented node = throwError $ mkError node ErrorUnimplementedCase
 
-transStellaIdent :: StellaIdent -> Result
-transStellaIdent x = case x of
-  StellaIdent string -> failure x
+failWith :: forall a b. (HasPosition a, Print a) => a -> ErrorType -> CheckerM b
+failWith x err = throwError $ mkError x err
 
-transExtensionName :: ExtensionName -> Result
-transExtensionName x = case x of
-  ExtensionName string -> failure x
+debugPrint :: Show a => a ->  CheckerM ()
+debugPrint = liftIO . pPrint
 
-transMemoryAddress :: MemoryAddress -> Result
-transMemoryAddress x = case x of
-  MemoryAddress string -> failure x
+debugPrintEnv :: CheckerM ()
+debugPrintEnv = do
+  env <- ask
+  liftIO . pPrint $ env
 
-transProgram :: Program -> Result
+transProgram :: Program -> Checker
 transProgram x = case x of
-  AProgram languagedecl extensions decls -> failure x
+  AProgram pos languagedecl extensions decls -> do
+    env <- transDeclSignatures decls
+    Env.withEnv env $
+      for_ decls transDecl
+    mainFunction <-  case Map.lookup "main" env.termsEnv of
+      Just (FuncType ftd)
+        | length ftd.argsType == 1 -> pure ftd
+        | otherwise -> failWith x (ErrorIncorrectArityOfMain $ length ftd.argsType)
+      _ -> failWith x ErrorMissingMain
+    pure mainFunction.returnType
 
-transLanguageDecl :: LanguageDecl -> Result
+data TransDeclData = TransDeclData
+  { typeAliases :: [(Text, SType)]
+  , functions :: [(Text, (FuncTypeData, Decl))]
+  }
+
+transDeclSignatures :: [Decl] -> CheckerM Env.Env
+transDeclSignatures decls = do
+  transData <- transDeclsTypes decls
+  pure Env.Env
+    { typesEnv = Map.fromList transData.typeAliases
+    , termsEnv = Map.fromList $ transData.functions
+      <&> \(name, (ftd, _)) -> (name, FuncType ftd)
+    }
+
+transDeclsTypes :: [Decl] -> CheckerM TransDeclData
+transDeclsTypes = foldlM go start
+  where
+    go :: TransDeclData -> Decl -> CheckerM TransDeclData
+    go cur dec = case dec of
+      DeclFun pos annotations (StellaIdent name) paramdecls returntype throwtype decls expr -> do
+        argsTypes <- fmap snd <$> traverse transParamDecl paramdecls
+        returnType <- transReturnType returntype
+        let
+          func = FuncTypeData
+            { argsType = argsTypes
+            , returnType = returnType
+            }
+        pure $ cur{functions = (name, (func, dec)) : cur.functions}
+      DeclTypeAlias pos (StellaIdent name) type_ -> do
+        t <- transType type_
+        pure $ cur{typeAliases = (name, t) : cur.typeAliases}
+      _ -> failNotImplemented dec
+    start = TransDeclData [] []
+
+transLanguageDecl :: LanguageDecl -> Checker
 transLanguageDecl x = case x of
-  LanguageCore -> failure x
+  LanguageCore pos -> failNotImplemented x
 
-transExtension :: Extension -> Result
+transExtension :: Extension -> Checker
 transExtension x = case x of
-  AnExtension extensionnames -> failure x
+  AnExtension pos extensionnames -> failNotImplemented x
 
-transDecl :: Decl -> Result
+transDecl :: Decl -> Checker
 transDecl x = case x of
-  DeclFun annotations stellaident paramdecls returntype throwtype decls expr -> failure x
-  DeclFunGeneric annotations stellaident stellaidents paramdecls returntype throwtype decls expr -> failure x
-  DeclTypeAlias stellaident type_ -> failure x
-  DeclExceptionType type_ -> failure x
-  DeclExceptionVariant stellaident type_ -> failure x
+  DeclFun pos annotations (StellaIdent name) paramdecls returntype throwtype decls expr -> do
+    env <- transDeclSignatures decls
+    paramsTypes <- traverse transParamDecl paramdecls
+    retType <- transReturnType returntype
+    let envWithParams = Env.addTerms paramsTypes env
+    exprT <- Env.withEnv envWithParams $ do
+      traverse_ transDecl decls
+      transExpr (Just retType) expr
+    when (retType /= exprT) $
+      failWith expr (ErrorUnexpectedTypeForExpression exprT retType)
+    pure exprT
+  DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failNotImplemented x
+  DeclTypeAlias pos (StellaIdent name) type_ -> transType type_
+  DeclExceptionType pos type_ -> failNotImplemented x
+  DeclExceptionVariant pos (StellaIdent name) type_ -> failNotImplemented x
 
-transLocalDecl :: LocalDecl -> Result
+-- looks like dead code
+transLocalDecl :: LocalDecl -> Checker
 transLocalDecl x = case x of
-  ALocalDecl decl -> failure x
+  ALocalDecl pos decl -> failNotImplemented x
 
-transAnnotation :: Annotation -> Result
+transAnnotation :: Annotation -> Checker
 transAnnotation x = case x of
-  InlineAnnotation -> failure x
+  InlineAnnotation pos -> failNotImplemented x
 
-transParamDecl :: ParamDecl -> Result
+transParamDecl :: ParamDecl -> CheckerM (Text, SType)
 transParamDecl x = case x of
-  AParamDecl stellaident type_ -> failure x
+  AParamDecl pos (StellaIdent name) type_ -> (name,) <$> transType type_
 
-transReturnType :: ReturnType -> Result
+transReturnType :: ReturnType -> Checker
 transReturnType x = case x of
-  NoReturnType -> failure x
-  SomeReturnType type_ -> failure x
+  NoReturnType pos -> pure $ SimpleType Unit
+  SomeReturnType pos type_ -> transType type_
 
-transThrowType :: ThrowType -> Result
+transThrowType :: ThrowType -> Checker
 transThrowType x = case x of
-  NoThrowType -> failure x
-  SomeThrowType types -> failure x
+  NoThrowType pos -> failNotImplemented x
+  SomeThrowType pos types -> failNotImplemented x
 
-transType :: Type -> Result
+transType :: Type -> Checker
 transType x = case x of
-  TypeFun types type_ -> failure x
-  TypeForAll stellaidents type_ -> failure x
-  TypeRec stellaident type_ -> failure x
-  TypeSum type_1 type_2 -> failure x
-  TypeTuple types -> failure x
-  TypeRecord recordfieldtypes -> failure x
-  TypeVariant variantfieldtypes -> failure x
-  TypeList type_ -> failure x
-  TypeBool -> failure x
-  TypeNat -> failure x
-  TypeUnit -> failure x
-  TypeTop -> failure x
-  TypeBottom -> failure x
-  TypeRef type_ -> failure x
-  TypeVar stellaident -> failure x
+  TypeFun pos types retType -> do
+    argsTypes <- traverse transType types
+    returnType <- transType retType
+    pure $ FuncType FuncTypeData
+      { argsType = argsTypes
+      , returnType = returnType
+      }
+  TypeForAll pos stellaidents type_ -> failNotImplemented x
+  TypeRec pos (StellaIdent name) type_ -> failNotImplemented x
+  TypeSum pos type_1 type_2 -> do
+    t1 <- transType type_1
+    t2 <- transType type_2
+    pure $ SumType SumTypeData
+      { leftType = t1
+      , rightType = t2
+      }
+  TypeTuple pos types' -> do
+    types <- traverse transType types'
+    pure $ TupleType TupleTypeData
+      { tupleTypes = types
+      }
+  TypeRecord pos recordfieldtypes -> do
+    recordFields <- traverse transRecordFieldType recordfieldtypes
+    checkThatNamesUniq x ErrorDuplicateRecordFields$ fst <$> recordFields
+    pure $ RecordType RecordTypeData
+      { recordFields = Map.fromList recordFields
+      }
+  TypeVariant pos variantfieldtypes -> do
+    variantFields <- traverse transVariantFieldType variantfieldtypes
+    checkThatNamesUniq x ErrorDuplicateRecordFields $ fst <$> variantFields
+    pure $ VariantType VariantTypeData
+      { variants = Map.fromList variantFields
+      }
+  TypeList pos type_ -> do
+    innerType <- transType type_
+    pure $ ListType innerType
+  TypeBool pos -> pure $ SimpleType Boolean
+  TypeNat  pos-> pure $ SimpleType Nat
+  TypeUnit pos -> pure $ SimpleType Unit
+  TypeTop pos -> failNotImplemented x
+  TypeBottom pos -> failNotImplemented x
+  TypeRef pos type_ -> failNotImplemented x
+  TypeVar pos (StellaIdent name) -> pure $ TypeVarType name
 
-transMatchCase :: MatchCase -> Result
-transMatchCase x = case x of
-  AMatchCase pattern_ expr -> failure x
+transMatchCase :: Maybe SType -> SType -> MatchCase -> Checker
+transMatchCase desiredType matchType x = case x of
+  AMatchCase pos pattern_ expr -> do
+    newVars <- transPattern matchType pattern_
+    exprT <- Env.withTerms newVars $
+      transExpr desiredType expr
+    pure exprT
 
-transOptionalTyping :: OptionalTyping -> Result
+transOptionalTyping :: OptionalTyping -> Checker
 transOptionalTyping x = case x of
-  NoTyping -> failure x
-  SomeTyping type_ -> failure x
+  NoTyping  pos-> failNotImplemented x
+  SomeTyping  pos type_ -> failNotImplemented x
 
-transPatternData :: PatternData -> Result
+transPatternData :: PatternData -> Checker
 transPatternData x = case x of
-  NoPatternData -> failure x
-  SomePatternData pattern_ -> failure x
+  NoPatternData pos-> failNotImplemented x
+  SomePatternData pos pattern_ -> failNotImplemented x
 
-transExprData :: ExprData -> Result
-transExprData x = case x of
-  NoExprData -> failure x
-  SomeExprData expr -> failure x
+transExprData :: Maybe SType -> ExprData -> CheckerM (Maybe SType)
+transExprData desiredType x = case x of
+  NoExprData pos -> pure Nothing
+  SomeExprData pos expr -> Just <$> transExpr desiredType expr
 
-transPattern :: Pattern -> Result
-transPattern x = case x of
-  PatternVariant stellaident patterndata -> failure x
-  PatternInl pattern_ -> failure x
-  PatternInr pattern_ -> failure x
-  PatternTuple patterns -> failure x
-  PatternRecord labelledpatterns -> failure x
-  PatternList patterns -> failure x
-  PatternCons pattern_1 pattern_2 -> failure x
-  PatternFalse -> failure x
-  PatternTrue -> failure x
-  PatternUnit -> failure x
-  PatternInt integer -> failure x
-  PatternSucc pattern_ -> failure x
-  PatternVar stellaident -> failure x
+transPattern :: SType -> Pattern -> CheckerM [(Text, SType)]
+transPattern t x = case x of
+  PatternVariant pos (StellaIdent name) patterndata -> case t of
+    VariantType (VariantTypeData vtd) -> case Map.lookup name vtd of
+      -- more nested cases for god of nested cases
+      Just variantType -> case (variantType, patterndata) of
+        (Nothing, NoPatternData _) -> pure []
+        (Just variantCaseType, SomePatternData pos' pattern) ->
+          transPattern variantCaseType pattern
+        (Nothing, SomePatternData{}) ->
+          failWith x ErrorUnexpectedNonNullaryVariantPattern
+        (Just _, NoPatternData _) ->
+          failWith x ErrorUnexpectedNullaryVariantPattern
+      Nothing -> failWith x ErrorUnexpectedPatternForType
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternInl pos pattern_ -> case t of
+    SumType std -> transPattern std.leftType pattern_
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternInr pos pattern_ -> case t of
+    SumType std -> transPattern std.rightType pattern_
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternTuple pos patterns -> case t of
+    TupleType (TupleTypeData tupleTypes)
+      | length tupleTypes == length patterns
+      -> do
+        (join -> newVars) <- for (zip tupleTypes patterns) $
+          uncurry transPattern
+        checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+        pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternRecord pos labelledpatterns -> case t of
+    RecordType rtd -> do
+      (join -> newVars) <- for labelledpatterns $ transLabelledPattern rtd
+      checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+      pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternList pos patterns -> case t of
+    ListType listInnerType -> do
+      (join -> newVars) <- for patterns $ transPattern listInnerType
+      checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+      pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternCons pos pattern_1 pattern_2 -> case t of
+    ListType listInnerType -> do
+      newVars1 <- transPattern listInnerType pattern_1
+      newVars2 <- transPattern (ListType listInnerType) pattern_2
+      let newVars = newVars1 ++ newVars2
+      checkThatNamesUniq x ErrorDuplicatePatternVariable (fmap fst newVars)
+      pure newVars
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternFalse pos -> case t of
+    SimpleType Boolean -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternTrue pos -> case t of
+    SimpleType Boolean -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternUnit pos -> case t of
+    SimpleType Unit -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternInt pos integer -> case t of
+    SimpleType Nat -> pure []
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternSucc pos pattern_ -> case t of
+    SimpleType Nat -> transPattern (SimpleType Nat) pattern_
+    _ -> failWith x ErrorUnexpectedPatternForType
+  PatternVar pos (StellaIdent name) -> pure [(name, t)]
+  PatternAsc pos pattern type_ -> do
+    patT <- transType type_
+    when (patT /= t) $
+      failWith x ErrorUnexpectedPatternForType
+    transPattern patT pattern
 
-transLabelledPattern :: LabelledPattern -> Result
-transLabelledPattern x = case x of
-  ALabelledPattern stellaident pattern_ -> failure x
+transLabelledPattern :: RecordTypeData -> LabelledPattern -> CheckerM [(Text, SType)]
+transLabelledPattern (RecordTypeData rtd) x = case x of
+  ALabelledPattern pos (StellaIdent name) pattern_
+    | Just fieldType <- Map.lookup name rtd
+    -> transPattern fieldType pattern_
+  _ -> failWith x ErrorUnexpectedPatternForType
 
-transBinding :: Binding -> Result
+transBinding :: Binding -> CheckerM (Text, SType)
 transBinding x = case x of
-  ABinding stellaident expr -> failure x
+  ABinding pos (StellaIdent name) expr -> do
+    type_ <- transExpr Nothing expr
+    pure (name, type_)
 
-transExpr :: Expr -> Result
-transExpr x = case x of
-  Sequence expr1 expr2 -> failure x
-  Assign expr1 expr2 -> failure x
-  If expr1 expr2 expr3 -> failure x
-  Let patternbindings expr -> failure x
-  LetRec patternbindings expr -> failure x
-  TypeAbstraction stellaidents expr -> failure x
-  LessThan expr1 expr2 -> failure x
-  LessThanOrEqual expr1 expr2 -> failure x
-  GreaterThan expr1 expr2 -> failure x
-  GreaterThanOrEqual expr1 expr2 -> failure x
-  Equal expr1 expr2 -> failure x
-  NotEqual expr1 expr2 -> failure x
-  TypeAsc expr type_ -> failure x
-  TypeCast expr type_ -> failure x
-  Abstraction paramdecls expr -> failure x
-  Variant stellaident exprdata -> failure x
-  Match expr matchcases -> failure x
-  List exprs -> failure x
-  Add expr1 expr2 -> failure x
-  Subtract expr1 expr2 -> failure x
-  LogicOr expr1 expr2 -> failure x
-  Multiply expr1 expr2 -> failure x
-  Divide expr1 expr2 -> failure x
-  LogicAnd expr1 expr2 -> failure x
-  Ref expr -> failure x
-  Deref expr -> failure x
-  Application expr exprs -> failure x
-  TypeApplication expr types -> failure x
-  DotRecord expr stellaident -> failure x
-  DotTuple expr integer -> failure x
-  Tuple exprs -> failure x
-  Record bindings -> failure x
-  ConsList expr1 expr2 -> failure x
-  Head expr -> failure x
-  IsEmpty expr -> failure x
-  Tail expr -> failure x
-  Panic -> failure x
-  Throw expr -> failure x
-  TryCatch expr1 pattern_ expr2 -> failure x
-  TryWith expr1 expr2 -> failure x
-  Inl expr -> failure x
-  Inr expr -> failure x
-  Succ expr -> failure x
-  LogicNot expr -> failure x
-  Pred expr -> failure x
-  IsZero expr -> failure x
-  Fix expr -> failure x
-  NatRec expr1 expr2 expr3 -> failure x
-  Fold type_ expr -> failure x
-  Unfold type_ expr -> failure x
-  ConstTrue -> failure x
-  ConstFalse -> failure x
-  ConstUnit -> failure x
-  ConstInt integer -> failure x
-  ConstMemory memoryaddress -> failure x
-  Var stellaident -> failure x
+transExpr :: Maybe SType -> Expr -> Checker
+transExpr desiredType x = case x of
+  Sequence pos expr1 expr2 -> do
+    expr1Type <- transExpr (Just unit_) expr1
+    when (expr1Type /= unit_) $
+      failWith expr1 (ErrorUnexpectedTypeForExpression unit_ expr1Type)
+    expr2Type <- transExpr desiredType expr2
+    pure expr2Type
+  Assign pos expr1 expr2 -> do
+    expr1Type <- transExpr Nothing expr1
+    expr2Type <- transExpr (Just expr1Type) expr2
+    when (expr1Type /= expr2Type) $
+      failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type expr2Type
+    pure unit_
+  If pos expr1 expr2 expr3 -> do
+    expr1Type <- transExpr (Just bool_) expr1
+    when (expr1Type /= bool_) $
+      failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
+    expr2Type <- transExpr desiredType expr2
+    expr3Type <- transExpr (Just expr2Type) expr3
+    when (expr2Type /= expr3Type) $
+      failWith expr3 $ ErrorUnexpectedTypeForExpression expr2Type expr3Type
+    pure expr2Type
+  Let pos patternbindings expr -> do
+    let
+      travBindings :: [(Text, SType)] -> PatternBinding -> CheckerM [(Text, SType)]
+      travBindings newVars binding = Env.withTerms newVars $ do
+        newVarsFromPattern <- transPatternBinding binding
+        pure $ newVars ++ newVarsFromPattern
+    newVars <- foldM travBindings [] patternbindings
+    exprT <- Env.withTerms newVars $ do
+      transExpr desiredType expr
+    pure exprT
+  LetRec pos patternbindings expr -> do
+    let
+      travBindings :: [(Text, SType)] -> PatternBinding -> CheckerM [(Text, SType)]
+      travBindings newVars binding = Env.withTerms newVars $ do
+        newVarsFromPattern <- transLetRecPatternBinding binding
+        pure $ newVars ++ newVarsFromPattern
+    newVars <- foldM travBindings [] patternbindings
+    exprT <- Env.withTerms newVars $ do
+      transExpr desiredType expr
+    pure exprT
+  TypeAbstraction pos stellaidents expr -> failNotImplemented x
+  LessThan pos expr1 expr2 -> compareNatsOperator expr1 expr2
+  LessThanOrEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
+  GreaterThan pos expr1 expr2 -> compareNatsOperator expr1 expr2
+  GreaterThanOrEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
+  Equal pos expr1 expr2 -> compareNatsOperator expr1 expr2
+  NotEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
+  TypeAsc pos expr type_ -> do
+    t <- transType type_
+    exprT <- transExpr (Just t) expr
+    when (exprT /= t) $
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT t
+    pure exprT
+  TypeCast pos expr type_ -> failNotImplemented x
+  Abstraction pos paramdecls expr -> do
+    mDesiredRetType <- case desiredType of
+      Nothing -> pure Nothing
+      Just (FuncType ftd) -> pure $ Just ftd.returnType
+      Just _ -> pure Nothing
+    paramsTypes <- traverse transParamDecl paramdecls
+    retType <- Env.withTerms paramsTypes $ transExpr mDesiredRetType expr
+    let
+      funcT = FuncType FuncTypeData
+        { argsType = snd <$> paramsTypes
+        , returnType = retType
+        }
+    pure funcT
+  Variant pos (StellaIdent name) exprdata -> case desiredType of
+    Just v@(VariantType (VariantTypeData vtd)) -> case Map.lookup name vtd of
+      Just variantType -> do
+        exprT <- transExprData variantType exprdata
+        case (exprT, variantType) of
+          (Nothing, Nothing) -> pure ()
+          (Just et, Just vt)
+            | et == vt -> pure ()
+            | otherwise -> failWith x $ ErrorUnexpectedTypeForExpression et vt
+          (Nothing, Just vt ) -> failWith x $ ErrorMissingDataForLabel name
+          (Just et, Nothing) -> failWith x $ ErrorUnexpectedDataForNullaryLabel et
+        pure v
+      Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
+    Just dt -> failWith x $ ErrorUnexpectedVariant (Just dt)
+    Nothing -> failWith x ErrorAmbiguousVariantType
+  Match pos expr matchcases -> do
+    exprT <- transExpr Nothing expr
+    casesT <- case NE.nonEmpty matchcases of
+      Nothing -> failWith x ErrorIllegalEmptyMatching
+      Just cases -> do
+        firstCaseExprT <- transMatchCase desiredType exprT (NE.head cases)
+        for_ (NE.tail cases) $ \c -> do
+          ct <- transMatchCase desiredType exprT c
+          when (ct /= firstCaseExprT) $
+            failWith expr (ErrorUnexpectedTypeForExpression ct firstCaseExprT)
+        let patterns = cases <&> \(AMatchCase _ pattern _) -> pattern
+        unless (checkPatternsExhaustive exprT patterns) $
+          failWith x ErrorNonExhaustiveMatchPattern
+        pure firstCaseExprT
+    pure casesT
+  Add pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
+  Subtract pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
+  LogicOr pos expr1 expr2 -> logicOperator expr1 expr2
+  Multiply pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
+  Divide pos expr1 expr2 -> arithmeticNatsOperator expr1 expr2
+  LogicAnd pos expr1 expr2 -> logicOperator expr1 expr2
+  Ref pos expr -> failNotImplemented x
+  Deref pos expr -> failNotImplemented x
+  Application pos func args -> do
+    funcType <- transExpr Nothing func >>= \case
+      FuncType ftd
+        | length ftd.argsType /= length args
+        -> failWith x (ErrorIncorrectNumberOfArguments $ length args)
+        | otherwise -> pure ftd
+      _ -> failWith func ErrorNotAFunction
+    argsWithTypes <-
+      for (zip args funcType.argsType) $ \(expr, t) ->
+        (expr,) <$> transExpr (Just t) expr
+    -- some duplication of type check logic. TODO: rewrite in better times
+    checkFunctionApplication x funcType argsWithTypes
+  TypeApplication pos expr types -> failNotImplemented x
+  DotRecord pos expr (StellaIdent name) -> do
+    rtd <- transExpr Nothing expr >>= \case
+      RecordType (RecordTypeData rtd) -> pure rtd
+      _ -> failWith expr ErrorNotARecord
+    case Map.lookup name rtd of
+      Just t -> pure t
+      Nothing -> failWith expr (ErrorUnexpectedFieldAccess name)
+  DotTuple pos expr index -> do
+    ttd <- transExpr Nothing expr >>= \case
+      TupleType (TupleTypeData ttd) -> pure ttd
+      _ -> failWith expr ErrorNotATuple
+    case ttd !!? (index - 1) of
+      Just t -> pure t
+      Nothing -> failWith expr (ErrorTupleIndexOutOfBounds index)
+  Tuple pos exprs -> do
+    types <- traverse (transExpr Nothing) exprs
+    pure $ TupleType TupleTypeData
+      { tupleTypes = types
+      }
+  Record pos bindings_ -> do
+    bindings <- traverse transBinding bindings_
+    checkThatNamesUniq x ErrorDuplicateRecordFields $ fst <$> bindings
+    pure $ RecordType RecordTypeData
+      { recordFields = Map.fromList bindings
+      }
+  ConsList pos expr1 expr2 -> do
+    expr1T <- transExpr Nothing expr1
+    expr2T <- transExpr (Just $ ListType expr1T) expr2
+    when (ListType expr1T /= expr2T) $
+      failWith expr1 $ ErrorUnexpectedTypeForExpression (ListType expr1T) expr2T
+    pure $ ListType expr1T
+  Head pos expr -> do
+    listInnerType <- transExpr Nothing expr >>= \case
+      ListType listInnerType -> pure listInnerType
+      _ -> failWith expr ErrorNotAList
+    pure listInnerType
+  IsEmpty pos expr -> do
+    transExpr Nothing expr >>= \case
+      ListType _ -> pure ()
+      _ -> failWith expr ErrorNotAList
+    pure bool_
+  Tail pos expr -> do
+    listType <- transExpr Nothing expr >>= \case
+      lt@(ListType _) -> pure lt
+      _ -> failWith expr ErrorNotAList
+    pure listType
+  List pos exprs -> do
+    case exprs of
+      -- empty list, should infer type
+      [] -> case desiredType of
+        Just (ListType t) -> pure (ListType t)
+        Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got list"
+        Nothing -> failWith x ErrorAmbiguousList
+      (e:es) -> do
+        -- with some manipulations we can understand desired type
+        eT <- transExpr Nothing e
+        for_ es $ \e' -> do
+          e'T <- transExpr Nothing e'
+          when (e'T /= eT) $
+            failWith e' $ ErrorUnexpectedTypeForExpression e'T eT
+        pure $ ListType eT
+  Panic pos -> failNotImplemented x
+  Throw pos expr -> failNotImplemented x
+  TryCatch pos expr1 pattern_ expr2 -> failNotImplemented x
+  TryWith pos expr1 expr2 -> failNotImplemented x
+  Inl pos expr -> case desiredType of
+    Just (SumType std) -> do
+      exprT <- transExpr (Just std.leftType) expr
+      when (exprT /= std.leftType) $
+        failWith expr $ ErrorUnexpectedTypeForExpression exprT std.leftType
+      pure $ SumType std
+    Just dt -> failWith x ErrorUnexpectedInjection
+    Nothing -> failWith x ErrorAmbiguousSumType
+  Inr pos expr -> case desiredType of
+    Just (SumType std) -> do
+      exprT <- transExpr (Just std.rightType) expr
+      when (exprT /= std.rightType) $
+          failWith expr $ ErrorUnexpectedTypeForExpression exprT std.rightType
+      pure $ SumType std
+    Just dt -> failWith x ErrorUnexpectedInjection
+    Nothing -> failWith x ErrorAmbiguousSumType
+  Succ pos expr -> do
+    exprT <- transExpr (Just nat_) expr
+    when (exprT /= nat_) $
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
+    pure nat_
+  LogicNot pos expr -> do
+    exprT <- transExpr (Just bool_) expr
+    when (exprT /= bool_) $
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT bool_
+    pure nat_
+  Pred pos expr ->  do
+    exprT <- transExpr (Just nat_) expr
+    when (exprT /= nat_) $
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
+    pure nat_
+  IsZero pos expr -> do
+    exprT <- transExpr (Just nat_) expr
+    when (exprT /= nat_) $
+      failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
+    pure bool_
+  Fix pos expr -> do
+    let
+      desiredTypeForFix = desiredType <&> \t ->
+        FuncType FuncTypeData{argsType = [t], returnType = t}
+    ftd <- transExpr desiredTypeForFix expr >>= \case
+      FuncType ftd
+        | length ftd.argsType == 1 -> pure ftd
+        | otherwise -> failWith expr $ ErrorUnexpectedTypeForExpressionText $ "Expected function with one argument, but got" <> pp ftd
+      _ -> failWith expr ErrorNotAFunction
+    pure ftd.returnType
+  NatRec pos expr1 expr2 expr3 -> do
+    untilT <- transExpr (Just nat_) expr1
+    when (untilT /= nat_) $
+      failWith expr1 $ ErrorUnexpectedTypeForExpression untilT nat_
+    startT <- transExpr desiredType expr2
+    let
+      masterFunctionT = FuncType $ FuncTypeData
+        { argsType = [nat_]
+        , returnType = FuncType $ FuncTypeData
+          { argsType = [startT]
+          , returnType = startT
+          }
+        }
+    funcT <- transExpr desiredType expr3
+    when (funcT /= masterFunctionT) $
+      failWith expr3 $ ErrorUnexpectedTypeForExpression funcT masterFunctionT
+    pure startT
+  Fold pos type_ expr -> failNotImplemented x
+  Unfold pos type_ expr -> failNotImplemented x
+  ConstTrue pos -> pure bool_
+  ConstFalse pos -> pure bool_
+  ConstUnit pos -> pure unit_
+  ConstInt pos integer -> pure nat_
+  ConstMemory pos memoryaddress -> failNotImplemented x
+  Var pos (StellaIdent name) -> lookupTermThrow x name
 
-transPatternBinding :: PatternBinding -> Result
+transPatternBinding :: PatternBinding -> CheckerM [(Text, SType)]
 transPatternBinding x = case x of
-  APatternBinding pattern_ expr -> failure x
+  APatternBinding pos pattern_ expr -> do
+    exprT <- transExpr Nothing expr
+    newTerms <- transPattern exprT pattern_
+    pure newTerms
 
-transVariantFieldType :: VariantFieldType -> Result
+transLetRecPatternBinding :: PatternBinding -> CheckerM [(Text, SType)]
+transLetRecPatternBinding x = case x of
+  APatternBinding pos (PatternAsc _ (PatternVar _ (StellaIdent name)) type_) expr -> do
+    asT <- transType type_
+    exprT <- Env.withTerms [(name, asT)] $ transExpr (Just asT) expr
+    when (asT /= exprT) $
+      failWith x $ ErrorUnexpectedTypeForExpression asT exprT
+    pure [(name, asT)]
+  _ -> failWith x $ ErrorAmbiguousPatternType "Let rec supported only with 'letrec x as T = x' pattern"
+
+transVariantFieldType :: VariantFieldType -> CheckerM (Text, Maybe SType)
 transVariantFieldType x = case x of
-  AVariantFieldType stellaident optionaltyping -> failure x
+  AVariantFieldType pos (StellaIdent name) (SomeTyping typingPos type_) -> do
+    t <- transType type_
+    pure (name, Just t)
+  AVariantFieldType pos (StellaIdent name) (NoTyping typingPos) -> do
+    pure (name, Nothing)
 
-transRecordFieldType :: RecordFieldType -> Result
+transRecordFieldType :: RecordFieldType -> CheckerM (Text, SType)
 transRecordFieldType x = case x of
-  ARecordFieldType stellaident type_ -> failure x
+  ARecordFieldType pos (StellaIdent name) type_ -> do
+    t <- transType type_
+    pure (name, t)
 
-transTyping :: Typing -> Result
+-- dead code?
+transTyping :: Typing -> Checker
 transTyping x = case x of
-  ATyping expr type_ -> failure x
+  ATyping pos expr type_ -> failNotImplemented x
+
+compareNatsOperator :: Expr -> Expr -> CheckerM SType
+compareNatsOperator expr1 expr2 =  do
+  expr1Type <- transExpr (Just nat_) expr1
+  when (expr1Type /= nat_) $
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type nat_
+  expr2Type <- transExpr (Just nat_) expr1
+  when (expr2Type /= nat_) $
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr2Type nat_
+  pure bool_
+
+arithmeticNatsOperator :: Expr -> Expr -> CheckerM SType
+arithmeticNatsOperator expr1 expr2 =  do
+  expr1Type <- transExpr (Just nat_) expr1
+  when (expr1Type /= nat_) $
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type nat_
+  expr2Type <- transExpr (Just nat_) expr1
+  when (expr2Type /= nat_) $
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr2Type nat_
+  pure nat_
+
+logicOperator :: Expr -> Expr -> CheckerM SType
+logicOperator expr1 expr2 =  do
+  expr1Type <- transExpr (Just bool_) expr1
+  when (expr1Type /= bool_) $
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
+  expr2Type <- transExpr (Just bool_) expr1
+  when (expr2Type /= bool_) $
+    failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
+  pure bool_
+
+checkFunctionApplication :: {- Application expr -} Expr -> FuncTypeData -> [(Expr, SType)] -> CheckerM SType
+checkFunctionApplication applicationExpr ftd passed = do
+    go ftd.argsType passed
+    pure ftd.returnType
+  where
+    go :: {-functions args-} [SType] -> {-passed args-} [(Expr, SType)] -> CheckerM ()
+    go (at:ats) ((expr, pa):pas) =
+      if at /= pa
+        then failWith expr $ ErrorUnexpectedTypeForExpression at pa
+        else go ats pas
+    go [] [] = pure ()
+    go _ _ = failWith applicationExpr ErrorUnexpectedTypeForAParameter
+
+checkThatNamesUniq :: (HasPosition node, Print node) => node -> ([Text] -> ErrorType) -> [Text] -> CheckerM ()
+checkThatNamesUniq expr errorConstructor names = case filter ((> 1) . snd) counts of
+    [] -> pure ()
+    (fmap fst -> nonUniqNames) -> failWith expr (errorConstructor nonUniqNames)
+  where
+    counts = map (liftA2 (,) head length) . L.group . L.sort $ names
+
+lookupTermThrow :: (HasPosition node, Print node) => node -> Text -> CheckerM SType
+lookupTermThrow node name = Env.lookupTerm name >>= \case
+  Just type_ -> pure type_
+  Nothing -> failWith node ErrorUndefinedVariable
+
+-- Thanks relude :)
+infix 9 !!?
+(!!?) :: [a] -> Integer -> Maybe a
+(!!?) xs i
+    | i < 0     = Nothing
+    | otherwise = go i xs
+  where
+    go :: Integer -> [a] -> Maybe a
+    go 0 (x:_)  = Just x
+    go j (_:ys) = go (j - 1) ys
+    go _ []     = Nothing
+{-# INLINE (!!?) #-}
