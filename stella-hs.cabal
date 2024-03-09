@@ -41,7 +41,7 @@ library
         alex:alex,
         happy:happy
     build-depends:
-        base ^>=4.16.4.0,
+        base >=4.16,
         text,
         array,
         containers,
@@ -57,7 +57,7 @@ executable stella-hs
     -- other-modules:
     -- other-extensions:
     build-depends:
-        base ^>=4.16.4.0,
+        base >=4.16,
         text,
         pretty-simple,
         stella-hs
@@ -74,7 +74,7 @@ test-suite stella-hs-test
     hs-source-dirs:   test
     main-is:          Main.hs
     build-depends:
-        base ^>=4.16.4.0,
+        base >=4.16,
         stella-hs,
         directory,
         either,

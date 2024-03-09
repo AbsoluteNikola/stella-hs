@@ -16,12 +16,12 @@ import Data.Foldable
 import qualified Stella.Check.Env as Env
 import Stella.Check.Env (CheckerM)
 import qualified Data.Map as Map
-import Control.Monad.Except ( MonadError(throwError), foldM )
+import Control.Monad.Except ( MonadError(throwError))
 import Stella.Check.Errors (mkError, ErrorType (..))
 import Control.Monad.IO.Class (liftIO)
 import Text.Pretty.Simple (pPrint)
 import Data.Functor ((<&>))
-import Control.Monad (when, join, unless)
+import Control.Monad (when, join, unless, foldM)
 import Stella.Ast.PrintSyntax (Print)
 import Control.Monad.Reader (ask)
 import qualified Data.List as L
