@@ -81,7 +81,14 @@ data SType
   | SumType SumTypeData
   | VariantType VariantTypeData
   | RefType SType
+  | Top
+  | Bottom
   deriving (Eq, Show)
+
+unit_, bool_, nat_ :: SType
+unit_ = SimpleType Unit
+bool_ = SimpleType Boolean
+nat_ = SimpleType Nat
 
 instance Pretty SType where
   pp = \case
@@ -94,8 +101,10 @@ instance Pretty SType where
     SumType t -> pp t
     VariantType t -> pp t
     RefType t -> "&" <> pp t
+    Top -> "Top"
+    Bottom -> "Bottom"
 
-unit_, bool_, nat_ :: SType
-unit_ = SimpleType Unit
-bool_ = SimpleType Boolean
-nat_ = SimpleType Nat
+eqWithSubtyping :: SType -> SType -> Bool
+eqWithSubtyping actual expected
+  | actual == expected = True
+  | otherwise = False

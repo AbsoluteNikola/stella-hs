@@ -31,6 +31,7 @@ import Data.Traversable (for)
 import Stella.Check.Utils (Pretty(pp))
 import Stella.Check.Exhaustiveness (checkPatternsExhaustive)
 import qualified Data.Set as Set
+import Control.Monad.Reader.Class (asks)
 
 type Checker = CheckerM SType
 
@@ -47,6 +48,16 @@ debugPrintEnv :: CheckerM ()
 debugPrintEnv = do
   env <- ask
   liftIO . pPrint $ env
+
+whenTypeNotEq :: SType -> SType -> CheckerM () -> CheckerM ()
+whenTypeNotEq actual expected action = do
+  isSubtypingEnabled
+    <- asks (Set.member "#structural-subtyping" . Env.extensions)
+  let
+    eqF = if isSubtypingEnabled
+        then eqWithSubtyping -- (==)
+        else eqWithSubtyping
+  when (not $ eqF actual expected) $ action
 
 transProgram :: Program -> Checker
 transProgram x = case x of
@@ -135,7 +146,7 @@ transDecl x = case x of
     exprT <- Env.withEnv envWithParams $ do
       traverse_ transDecl decls
       transExpr (Just retType) expr
-    when (retType /= exprT) $
+    whenTypeNotEq retType exprT $
       failWith expr (ErrorUnexpectedTypeForExpression exprT retType)
     pure $ Just exprT
   DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failNotImplemented x
@@ -207,8 +218,8 @@ transType x = case x of
   TypeBool pos -> pure $ SimpleType Boolean
   TypeNat  pos-> pure $ SimpleType Nat
   TypeUnit pos -> pure $ SimpleType Unit
-  TypeTop pos -> failNotImplemented x
-  TypeBottom pos -> failNotImplemented x
+  TypeTop pos -> pure Top
+  TypeBottom pos -> pure Bottom
   TypeRef pos type_ -> do
     innerType <- transType type_
     pure $ RefType innerType
@@ -306,7 +317,7 @@ transPattern t x = case x of
   PatternVar pos (StellaIdent name) -> pure [(name, t)]
   PatternAsc pos pattern type_ -> do
     patT <- transType type_
-    when (patT /= t) $
+    whenTypeNotEq patT t $
       failWith x ErrorUnexpectedPatternForType
     transPattern patT pattern
   PatternCastAs {} -> failNotImplemented x
@@ -322,7 +333,7 @@ transExpr :: Maybe SType -> Expr -> Checker
 transExpr desiredType x = case x of
   Sequence pos expr1 expr2 -> do
     expr1Type <- transExpr (Just unit_) expr1
-    when (expr1Type /= unit_) $
+    whenTypeNotEq expr1Type unit_ $
       failWith expr1 (ErrorUnexpectedTypeForExpression unit_ expr1Type)
     expr2Type <- transExpr desiredType expr2
     pure expr2Type
@@ -332,16 +343,16 @@ transExpr desiredType x = case x of
       RefType innerType -> pure innerType
       _ -> failWith x ErrorNotAReference
     expr2Type <- transExpr (Just t) expr2
-    when (t /= expr2Type) $
+    whenTypeNotEq t expr2Type $
       failWith expr1 $ ErrorUnexpectedTypeForExpression t expr2Type
     pure unit_
   If pos expr1 expr2 expr3 -> do
     expr1Type <- transExpr (Just bool_) expr1
-    when (expr1Type /= bool_) $
+    whenTypeNotEq expr1Type bool_ $
       failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
     expr2Type <- transExpr desiredType expr2
     expr3Type <- transExpr (Just expr2Type) expr3
-    when (expr2Type /= expr3Type) $
+    whenTypeNotEq expr2Type expr3Type $
       failWith expr3 $ ErrorUnexpectedTypeForExpression expr2Type expr3Type
     pure expr2Type
   Let pos patternbindings expr -> do
@@ -374,7 +385,7 @@ transExpr desiredType x = case x of
   TypeAsc pos expr type_ -> do
     t <- transType type_
     exprT <- transExpr (Just t) expr
-    when (exprT /= t) $
+    whenTypeNotEq exprT t $
       failWith expr $ ErrorUnexpectedTypeForExpression exprT t
     pure exprT
   TypeCast pos expr type_ -> failNotImplemented x
@@ -414,7 +425,7 @@ transExpr desiredType x = case x of
         firstCaseExprT <- transMatchCase desiredType exprT (NE.head cases)
         for_ (NE.tail cases) $ \c -> do
           ct <- transMatchCase desiredType exprT c
-          when (ct /= firstCaseExprT) $
+          whenTypeNotEq ct firstCaseExprT $
             failWith expr (ErrorUnexpectedTypeForExpression ct firstCaseExprT)
         let patterns = cases <&> \(AMatchCase _ pattern _) -> pattern
         unless (checkPatternsExhaustive exprT patterns) $
@@ -484,7 +495,7 @@ transExpr desiredType x = case x of
   ConsList pos expr1 expr2 -> do
     expr1T <- transExpr Nothing expr1
     expr2T <- transExpr (Just $ ListType expr1T) expr2
-    when (ListType expr1T /= expr2T) $
+    whenTypeNotEq (ListType expr1T) expr2T $
       failWith expr1 $ ErrorUnexpectedTypeForExpression (ListType expr1T) expr2T
     pure $ ListType expr1T
   Head pos expr -> do
@@ -514,7 +525,7 @@ transExpr desiredType x = case x of
         eT <- transExpr Nothing e
         for_ es $ \e' -> do
           e'T <- transExpr Nothing e'
-          when (e'T /= eT) $
+          whenTypeNotEq e'T eT $
             failWith e' $ ErrorUnexpectedTypeForExpression e'T eT
         pure $ ListType eT
   Panic pos -> case desiredType of
@@ -526,7 +537,7 @@ transExpr desiredType x = case x of
       Nothing -> failWith x ErrorExceptionTypeNotDeclared
       Just excT -> do
         exprT <- transExpr (Just excT) expr
-        when (exprT /= excT) $
+        whenTypeNotEq exprT excT $
           failWith expr $ ErrorUnexpectedTypeForExpression exprT excT
     case desiredType of
       Nothing ->  failWith x ErrorAmbiguousThrowType
@@ -540,20 +551,20 @@ transExpr desiredType x = case x of
     newTerms <- transPattern excT pattern_
     catchT <- Env.withTerms newTerms $ do
       transExpr desiredType expr2
-    when (exprT /= catchT) $
+    whenTypeNotEq exprT catchT $
       failWith x $ ErrorUnexpectedTypeForExpression exprT catchT
     pure $ exprT
   TryWith pos expr1 expr2 -> do
     t1 <- transExpr desiredType expr1
     t2 <- transExpr desiredType expr2
-    when (t1 /= t2) $
+    whenTypeNotEq t1 t2 $
       failWith expr2 $ ErrorUnexpectedTypeForExpression t1 t2
     pure t1
   TryCastAs{} -> failNotImplemented x
   Inl pos expr -> case desiredType of
     Just (SumType std) -> do
       exprT <- transExpr (Just std.leftType) expr
-      when (exprT /= std.leftType) $
+      whenTypeNotEq exprT std.leftType $
         failWith expr $ ErrorUnexpectedTypeForExpression exprT std.leftType
       pure $ SumType std
     Just dt -> failWith x ErrorUnexpectedInjection
@@ -561,29 +572,29 @@ transExpr desiredType x = case x of
   Inr pos expr -> case desiredType of
     Just (SumType std) -> do
       exprT <- transExpr (Just std.rightType) expr
-      when (exprT /= std.rightType) $
+      whenTypeNotEq exprT std.rightType $
           failWith expr $ ErrorUnexpectedTypeForExpression exprT std.rightType
       pure $ SumType std
     Just dt -> failWith x ErrorUnexpectedInjection
     Nothing -> failWith x ErrorAmbiguousSumType
   Succ pos expr -> do
     exprT <- transExpr (Just nat_) expr
-    when (exprT /= nat_) $
+    whenTypeNotEq exprT nat_ $
       failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
     pure nat_
   LogicNot pos expr -> do
     exprT <- transExpr (Just bool_) expr
-    when (exprT /= bool_) $
+    whenTypeNotEq exprT bool_ $
       failWith expr $ ErrorUnexpectedTypeForExpression exprT bool_
     pure nat_
   Pred pos expr ->  do
     exprT <- transExpr (Just nat_) expr
-    when (exprT /= nat_) $
+    whenTypeNotEq exprT nat_ $
       failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
     pure nat_
   IsZero pos expr -> do
     exprT <- transExpr (Just nat_) expr
-    when (exprT /= nat_) $
+    whenTypeNotEq exprT nat_ $
       failWith expr $ ErrorUnexpectedTypeForExpression exprT nat_
     pure bool_
   Fix pos expr -> do
@@ -598,7 +609,7 @@ transExpr desiredType x = case x of
     pure ftd.returnType
   NatRec pos expr1 expr2 expr3 -> do
     untilT <- transExpr (Just nat_) expr1
-    when (untilT /= nat_) $
+    whenTypeNotEq untilT nat_ $
       failWith expr1 $ ErrorUnexpectedTypeForExpression untilT nat_
     startT <- transExpr desiredType expr2
     let
@@ -610,7 +621,7 @@ transExpr desiredType x = case x of
           }
         }
     funcT <- transExpr desiredType expr3
-    when (funcT /= masterFunctionT) $
+    whenTypeNotEq funcT masterFunctionT $
       failWith expr3 $ ErrorUnexpectedTypeForExpression funcT masterFunctionT
     pure startT
   Fold pos type_ expr -> failNotImplemented x
@@ -634,7 +645,7 @@ transLetRecPatternBinding x = case x of
   APatternBinding pos (PatternAsc _ (PatternVar _ (StellaIdent name)) type_) expr -> do
     asT <- transType type_
     exprT <- Env.withTerms [(name, asT)] $ transExpr (Just asT) expr
-    when (asT /= exprT) $
+    whenTypeNotEq asT exprT $
       failWith x $ ErrorUnexpectedTypeForExpression asT exprT
     pure [(name, asT)]
   _ -> failWith x $ ErrorAmbiguousPatternType "Let rec supported only with 'letrec x as T = x' pattern"
@@ -661,30 +672,30 @@ transTyping x = case x of
 compareNatsOperator :: Expr -> Expr -> CheckerM SType
 compareNatsOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just nat_) expr1
-  when (expr1Type /= nat_) $
+  whenTypeNotEq expr1Type nat_ $
     failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type nat_
   expr2Type <- transExpr (Just nat_) expr1
-  when (expr2Type /= nat_) $
+  whenTypeNotEq expr2Type nat_ $
     failWith expr1 $ ErrorUnexpectedTypeForExpression expr2Type nat_
   pure bool_
 
 arithmeticNatsOperator :: Expr -> Expr -> CheckerM SType
 arithmeticNatsOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just nat_) expr1
-  when (expr1Type /= nat_) $
+  whenTypeNotEq expr1Type nat_ $
     failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type nat_
   expr2Type <- transExpr (Just nat_) expr1
-  when (expr2Type /= nat_) $
+  whenTypeNotEq expr2Type nat_ $
     failWith expr1 $ ErrorUnexpectedTypeForExpression expr2Type nat_
   pure nat_
 
 logicOperator :: Expr -> Expr -> CheckerM SType
 logicOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just bool_) expr1
-  when (expr1Type /= bool_) $
+  whenTypeNotEq expr1Type bool_ $
     failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
   expr2Type <- transExpr (Just bool_) expr1
-  when (expr2Type /= bool_) $
+  whenTypeNotEq expr2Type bool_ $
     failWith expr1 $ ErrorUnexpectedTypeForExpression expr1Type bool_
   pure bool_
 
