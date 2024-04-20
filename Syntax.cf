@@ -54,6 +54,7 @@ SomePatternData.  PatternData ::= "=" Pattern ;
 NoExprData.   ExprData ::= ;
 SomeExprData. ExprData ::= "=" Expr ;
 
+PatternCastAs.  Pattern ::= Pattern "cast" "as" Type ;
 PatternAsc.     Pattern ::= Pattern "as" Type ;
 PatternVariant. Pattern ::= "<|" StellaIdent PatternData "|>" ;
 PatternInl.     Pattern ::= "inl" "(" Pattern ")" ;
@@ -115,7 +116,7 @@ Multiply.     Expr4 ::= Expr4 "*" Expr5 ;
 Divide.       Expr4 ::= Expr4 "/" Expr5 ;
 LogicAnd.     Expr4 ::= Expr4 "and" Expr5 ;
 
-Ref.          Expr5 ::= "new" "(" Expr5 ")" ;
+Ref.          Expr5 ::= "new" "(" Expr ")" ;
 Deref.        Expr5 ::= "*" Expr5 ;
 
 Application.  Expr6 ::= Expr6 "(" [Expr] ")" ;
@@ -134,6 +135,7 @@ Panic.        Expr6 ::= "panic!" ;
 Throw.        Expr6 ::= "throw" "(" Expr ")" ;
 TryCatch.     Expr6 ::= "try" "{" Expr "}" "catch" "{" Pattern "=>" Expr "}" ;
 TryWith.      Expr6 ::= "try" "{" Expr "}" "with"  "{" Expr "}" ;
+TryCastAs.    Expr6 ::= "try" "{" Expr "}" "cast" "as" Type "{" Pattern "=>" Expr "}" "with"  "{" Expr "}" ;
 
 Inl.          Expr6 ::= "inl" "(" Expr ")" ;
 Inr.          Expr6 ::= "inr" "(" Expr ")" ;
@@ -155,6 +157,7 @@ ConstInt.     Expr7 ::= Integer ;
 ConstMemory.  Expr7 ::= MemoryAddress ;
 Var.          Expr7 ::= StellaIdent ;
 
+TypeAuto.     Type ::= "auto" ;
 TypeFun.      Type ::= "fn" "(" [Type] ")" "->" Type ;
 TypeForAll.   Type ::= "forall" [StellaIdent] "." Type ;
 TypeRec.      Type ::= "µ" StellaIdent "." Type ;

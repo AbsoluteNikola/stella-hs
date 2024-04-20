@@ -173,7 +173,7 @@ eitherResIdent tv s = treeFind resWords
 -- | The keywords and symbols of the language organized as binary search tree.
 resWords :: BTree
 resWords =
-  b "core" 41
+  b "cons" 41
     (b ">" 21
        (b "/" 11
           (b "+" 6
@@ -190,27 +190,28 @@ resWords =
                 (b "Nat" 28 (b "List::tail" 27 N N) N) (b "Nat::pred" 30 N N)))
           (b "and" 36
              (b "[" 34 (b "Unit" 33 (b "Top" 32 N N) N) (b "]" 35 N N))
-             (b "catch" 39 (b "cast" 38 (b "as" 37 N N) N) (b "cons" 40 N N)))))
-    (b "not" 61
-       (b "if" 51
-          (b "fix" 46
-             (b "extend" 44
-                (b "exception" 43 (b "else" 42 N N) N) (b "false" 45 N N))
-             (b "forall" 49
-                (b "fold" 48 (b "fn" 47 N N) N) (b "generic" 50 N N)))
-          (b "language" 56
-             (b "inline" 54 (b "inl" 53 (b "in" 52 N N) N) (b "inr" 55 N N))
-             (b "match" 59
-                (b "letrec" 58 (b "let" 57 N N) N) (b "new" 60 N N))))
-       (b "type" 71
-          (b "then" 66
-             (b "return" 64 (b "panic!" 63 (b "or" 62 N N) N) (b "succ" 65 N N))
-             (b "true" 69
-                (b "throws" 68 (b "throw" 67 N N) N) (b "try" 70 N N)))
-          (b "{" 76
-             (b "variant" 74
-                (b "unit" 73 (b "unfold" 72 N N) N) (b "with" 75 N N))
-             (b "}" 79 (b "|>" 78 (b "|" 77 N N) N) (b "\181" 80 N N)))))
+             (b "cast" 39 (b "auto" 38 (b "as" 37 N N) N) (b "catch" 40 N N)))))
+    (b "not" 62
+       (b "if" 52
+          (b "fix" 47
+             (b "exception" 44
+                (b "else" 43 (b "core" 42 N N) N)
+                (b "false" 46 (b "extend" 45 N N) N))
+             (b "forall" 50
+                (b "fold" 49 (b "fn" 48 N N) N) (b "generic" 51 N N)))
+          (b "language" 57
+             (b "inline" 55 (b "inl" 54 (b "in" 53 N N) N) (b "inr" 56 N N))
+             (b "match" 60
+                (b "letrec" 59 (b "let" 58 N N) N) (b "new" 61 N N))))
+       (b "type" 72
+          (b "then" 67
+             (b "return" 65 (b "panic!" 64 (b "or" 63 N N) N) (b "succ" 66 N N))
+             (b "true" 70
+                (b "throws" 69 (b "throw" 68 N N) N) (b "try" 71 N N)))
+          (b "{" 77
+             (b "variant" 75
+                (b "unit" 74 (b "unfold" 73 N N) N) (b "with" 76 N N))
+             (b "}" 80 (b "|>" 79 (b "|" 78 N N) N) (b "\181" 81 N N)))))
   where
   b s n = B bs (TS bs n)
     where

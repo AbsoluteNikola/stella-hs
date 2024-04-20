@@ -69,7 +69,8 @@ data ThrowType' a = NoThrowType a | SomeThrowType a [Type' a]
 
 type Type = Type' BNFC'Position
 data Type' a
-    = TypeFun a [Type' a] (Type' a)
+    = TypeAuto a
+    | TypeFun a [Type' a] (Type' a)
     | TypeForAll a [StellaIdent] (Type' a)
     | TypeRec a StellaIdent (Type' a)
     | TypeSum a (Type' a) (Type' a)
@@ -105,7 +106,8 @@ data ExprData' a = NoExprData a | SomeExprData a (Expr' a)
 
 type Pattern = Pattern' BNFC'Position
 data Pattern' a
-    = PatternAsc a (Pattern' a) (Type' a)
+    = PatternCastAs a (Pattern' a) (Type' a)
+    | PatternAsc a (Pattern' a) (Type' a)
     | PatternVariant a StellaIdent (PatternData' a)
     | PatternInl a (Pattern' a)
     | PatternInr a (Pattern' a)
@@ -172,6 +174,7 @@ data Expr' a
     | Throw a (Expr' a)
     | TryCatch a (Expr' a) (Pattern' a) (Expr' a)
     | TryWith a (Expr' a) (Expr' a)
+    | TryCastAs a (Expr' a) (Type' a) (Pattern' a) (Expr' a) (Expr' a)
     | Inl a (Expr' a)
     | Inr a (Expr' a)
     | Succ a (Expr' a)
@@ -278,6 +281,7 @@ instance HasPosition ThrowType where
 
 instance HasPosition Type where
   hasPosition = \case
+    TypeAuto p -> p
     TypeFun p _ _ -> p
     TypeForAll p _ _ -> p
     TypeRec p _ _ -> p
@@ -315,6 +319,7 @@ instance HasPosition ExprData where
 
 instance HasPosition Pattern where
   hasPosition = \case
+    PatternCastAs p _ _ -> p
     PatternAsc p _ _ -> p
     PatternVariant p _ _ -> p
     PatternInl p _ -> p
@@ -380,6 +385,7 @@ instance HasPosition Expr where
     Throw p _ -> p
     TryCatch p _ _ _ -> p
     TryWith p _ _ -> p
+    TryCastAs p _ _ _ _ _ -> p
     Inl p _ -> p
     Inr p _ -> p
     Succ p _ -> p

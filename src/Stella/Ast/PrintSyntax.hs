@@ -219,6 +219,7 @@ instance Print (Stella.Ast.AbsSyntax.ThrowType' a) where
 
 instance Print (Stella.Ast.AbsSyntax.Type' a) where
   prt i = \case
+    Stella.Ast.AbsSyntax.TypeAuto _ -> prPrec i 0 (concatD [doc (showString "auto")])
     Stella.Ast.AbsSyntax.TypeFun _ types type_ -> prPrec i 0 (concatD [doc (showString "fn"), doc (showString "("), prt 0 types, doc (showString ")"), doc (showString "->"), prt 0 type_])
     Stella.Ast.AbsSyntax.TypeForAll _ stellaidents type_ -> prPrec i 0 (concatD [doc (showString "forall"), prt 0 stellaidents, doc (showString "."), prt 0 type_])
     Stella.Ast.AbsSyntax.TypeRec _ stellaident type_ -> prPrec i 0 (concatD [doc (showString "\181"), prt 0 stellaident, doc (showString "."), prt 0 type_])
@@ -268,6 +269,7 @@ instance Print (Stella.Ast.AbsSyntax.ExprData' a) where
 
 instance Print (Stella.Ast.AbsSyntax.Pattern' a) where
   prt i = \case
+    Stella.Ast.AbsSyntax.PatternCastAs _ pattern_ type_ -> prPrec i 0 (concatD [prt 0 pattern_, doc (showString "cast"), doc (showString "as"), prt 0 type_])
     Stella.Ast.AbsSyntax.PatternAsc _ pattern_ type_ -> prPrec i 0 (concatD [prt 0 pattern_, doc (showString "as"), prt 0 type_])
     Stella.Ast.AbsSyntax.PatternVariant _ stellaident patterndata -> prPrec i 0 (concatD [doc (showString "<|"), prt 0 stellaident, prt 0 patterndata, doc (showString "|>")])
     Stella.Ast.AbsSyntax.PatternInl _ pattern_ -> prPrec i 0 (concatD [doc (showString "inl"), doc (showString "("), prt 0 pattern_, doc (showString ")")])
@@ -332,7 +334,7 @@ instance Print (Stella.Ast.AbsSyntax.Expr' a) where
     Stella.Ast.AbsSyntax.Multiply _ expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "*"), prt 5 expr2])
     Stella.Ast.AbsSyntax.Divide _ expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "/"), prt 5 expr2])
     Stella.Ast.AbsSyntax.LogicAnd _ expr1 expr2 -> prPrec i 4 (concatD [prt 4 expr1, doc (showString "and"), prt 5 expr2])
-    Stella.Ast.AbsSyntax.Ref _ expr -> prPrec i 5 (concatD [doc (showString "new"), doc (showString "("), prt 5 expr, doc (showString ")")])
+    Stella.Ast.AbsSyntax.Ref _ expr -> prPrec i 5 (concatD [doc (showString "new"), doc (showString "("), prt 0 expr, doc (showString ")")])
     Stella.Ast.AbsSyntax.Deref _ expr -> prPrec i 5 (concatD [doc (showString "*"), prt 5 expr])
     Stella.Ast.AbsSyntax.Application _ expr exprs -> prPrec i 6 (concatD [prt 6 expr, doc (showString "("), prt 0 exprs, doc (showString ")")])
     Stella.Ast.AbsSyntax.TypeApplication _ expr types -> prPrec i 6 (concatD [prt 6 expr, doc (showString "["), prt 0 types, doc (showString "]")])
@@ -348,6 +350,7 @@ instance Print (Stella.Ast.AbsSyntax.Expr' a) where
     Stella.Ast.AbsSyntax.Throw _ expr -> prPrec i 6 (concatD [doc (showString "throw"), doc (showString "("), prt 0 expr, doc (showString ")")])
     Stella.Ast.AbsSyntax.TryCatch _ expr1 pattern_ expr2 -> prPrec i 6 (concatD [doc (showString "try"), doc (showString "{"), prt 0 expr1, doc (showString "}"), doc (showString "catch"), doc (showString "{"), prt 0 pattern_, doc (showString "=>"), prt 0 expr2, doc (showString "}")])
     Stella.Ast.AbsSyntax.TryWith _ expr1 expr2 -> prPrec i 6 (concatD [doc (showString "try"), doc (showString "{"), prt 0 expr1, doc (showString "}"), doc (showString "with"), doc (showString "{"), prt 0 expr2, doc (showString "}")])
+    Stella.Ast.AbsSyntax.TryCastAs _ expr1 type_ pattern_ expr2 expr3 -> prPrec i 6 (concatD [doc (showString "try"), doc (showString "{"), prt 0 expr1, doc (showString "}"), doc (showString "cast"), doc (showString "as"), prt 0 type_, doc (showString "{"), prt 0 pattern_, doc (showString "=>"), prt 0 expr2, doc (showString "}"), doc (showString "with"), doc (showString "{"), prt 0 expr3, doc (showString "}")])
     Stella.Ast.AbsSyntax.Inl _ expr -> prPrec i 6 (concatD [doc (showString "inl"), doc (showString "("), prt 0 expr, doc (showString ")")])
     Stella.Ast.AbsSyntax.Inr _ expr -> prPrec i 6 (concatD [doc (showString "inr"), doc (showString "("), prt 0 expr, doc (showString ")")])
     Stella.Ast.AbsSyntax.Succ _ expr -> prPrec i 6 (concatD [doc (showString "succ"), doc (showString "("), prt 0 expr, doc (showString ")")])
