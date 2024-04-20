@@ -60,6 +60,13 @@ data ErrorType
   | ErrorIncorrectNumberOfArguments Int
   | ErrorUnexpectedDataForNullaryLabel SType
   | ErrorAmbiguousPatternType Text
+  | ErrorExceptionTypeNotDeclared
+  | ErrorAmbiguousThrowType
+  | ErrorAmbiguousReferenceType
+  | ErrorAmbiguousPanicType
+  | ErrorNotAReference
+  | ErrorUnexpectedMemoryAddress
+  | ErrorUnexpectedSubtype
 
 renderErrorTypeOnlyCode ::  ErrorType -> Text
 renderErrorTypeOnlyCode = \case
@@ -100,6 +107,13 @@ renderErrorTypeOnlyCode = \case
   ErrorIncorrectNumberOfArguments{} -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
   ErrorUnexpectedDataForNullaryLabel{} -> "ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL"
   ErrorAmbiguousPatternType{} -> "ERROR_AMBIGUOUS_PATTERN_TYPE"
+  ErrorExceptionTypeNotDeclared -> "ERROR_EXCEPTION_TYPE_NOT_DECLARED"
+  ErrorAmbiguousThrowType -> "ERROR_AMBIGUOUS_THROW_TYPE"
+  ErrorAmbiguousReferenceType -> "ERROR_AMBIGUOUS_REFERENCE_TYPE"
+  ErrorAmbiguousPanicType -> "ERROR_AMBIGUOUS_PANIC_TYPE"
+  ErrorNotAReference -> "ERROR_NOT_A_REFERENCE"
+  ErrorUnexpectedMemoryAddress -> "ERROR_UNEXPECTED_MEMORY_ADDRESS"
+  ErrorUnexpectedSubtype -> "ERROR_UNEXPECTED_SUBTYPE"
 
 renderErrorType :: ErrorType -> Text
 renderErrorType t = case t of

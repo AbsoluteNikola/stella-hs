@@ -15,4 +15,4 @@ import Control.Monad.Reader (runReaderT)
 import Control.Monad.Except (runExceptT)
 
 runStellaChecker :: Program -> IO (Either StellaError SType)
-runStellaChecker program = runExceptT $ runReaderT (unCheckerM $ transProgram program) mempty
+runStellaChecker program = runExceptT $ runReaderT (unCheckerM $ transProgram program) defEnv

@@ -17,14 +17,14 @@ instance Pretty FuncTypeData where
     pp returnType
 
 newtype RecordTypeData = RecordTypeData
-  { recordFields :: Map.Map Text SType
+  { recordFields :: [(Text, SType)]
   } deriving (Eq, Show)
 
 instance Pretty RecordTypeData where
   pp RecordTypeData{..}=
     "{" <>
     T.intercalate ", "
-      ((\(name, t) -> name <> " : " <> pp t) <$> Map.toList recordFields) <>
+      ((\(name, t) -> name <> " : " <> pp t) <$> recordFields) <>
     "}"
 
 newtype VariantTypeData = VariantTypeData
@@ -80,6 +80,7 @@ data SType
   | RecordType RecordTypeData
   | SumType SumTypeData
   | VariantType VariantTypeData
+  | RefType SType
   deriving (Eq, Show)
 
 instance Pretty SType where
@@ -92,6 +93,7 @@ instance Pretty SType where
     RecordType t -> pp t
     SumType t -> pp t
     VariantType t -> pp t
+    RefType t -> "&" <> pp t
 
 unit_, bool_, nat_ :: SType
 unit_ = SimpleType Unit
