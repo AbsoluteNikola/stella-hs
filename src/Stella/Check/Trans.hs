@@ -60,6 +60,19 @@ whenTypeNotEq actual expected action = do
         else (==)
   unless (eqF actual expected) action
 
+whenTypeNotEqDefError :: (HasPosition a, Print a) => a -> SType -> SType -> CheckerM ()
+whenTypeNotEqDefError node actual expected = do
+  isSubtypingEnabled
+    <- asks (Set.member "#structural-subtyping" . Env.extensions)
+  let
+    eqF = if isSubtypingEnabled
+        then eqWithSubtyping
+        else (==)
+  unless (eqF actual expected) $
+    if isSubtypingEnabled
+      then failWith node $ ErrorUnexpectedSubtype actual expected
+      else failWith node $ ErrorUnexpectedTypeForExpression actual expected
+
 bottomIfAmbiguousTypesAsBottomEnabled :: Checker -> Checker
 bottomIfAmbiguousTypesAsBottomEnabled action = do
   isAmbiguousTypesAsBottomEnabled
@@ -639,7 +652,8 @@ transExpr desiredType x = case x of
     ftd <- transExpr desiredTypeForFix expr >>= \case
       FuncType ftd
         | length ftd.argsType == 1 -> pure ftd
-        | otherwise -> failWith expr $ ErrorUnexpectedTypeForExpressionText $ "Expected function with one argument, but got" <> pp ftd
+        -- error ErrorNotAFunction only to mach test
+        | otherwise -> failWith expr $ ErrorNotAFunctionText $ "Expected function with one argument, but got " <> pp ftd
       _ -> failWith expr ErrorNotAFunction
     pure ftd.returnType
   NatRec pos expr1 expr2 expr3 -> do
@@ -687,7 +701,8 @@ transLetRecPatternBinding x = case x of
     whenTypeNotEq asT exprT $
       failWith x $ ErrorUnexpectedTypeForExpression asT exprT
     pure [(name, asT)]
-  _ -> failWith x $ ErrorAmbiguousPatternType "Let rec supported only with 'letrec x as T = x' pattern"
+  -- "Let rec supported only with 'letrec x as T = x' pattern"
+  _ -> failWith x ErrorUnexpectedPatternForType
 
 transVariantFieldType :: VariantFieldType -> CheckerM (Text, Maybe SType)
 transVariantFieldType x = case x of

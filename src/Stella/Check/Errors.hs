@@ -25,6 +25,7 @@ mkError node err = StellaError
 data ErrorType
   = ErrorUnexpectedTypeForExpression {- actual -} SType {- needed -} SType
   | ErrorUnexpectedTypeForExpressionText Text
+  | ErrorNotAFunctionText Text
   | ErrorMissingMain
   | ErrorUndefinedVariable -- {- name of undefined variable -} Text
   | ErrorNotAFunction
@@ -66,7 +67,7 @@ data ErrorType
   | ErrorAmbiguousPanicType
   | ErrorNotAReference
   | ErrorUnexpectedMemoryAddress
-  | ErrorUnexpectedSubtype
+  | ErrorUnexpectedSubtype {- actual -} SType {- excpected -} SType
 
 renderErrorTypeOnlyCode ::  ErrorType -> Text
 renderErrorTypeOnlyCode = \case
@@ -75,6 +76,7 @@ renderErrorTypeOnlyCode = \case
   ErrorMissingMain -> "ERROR_MISSING_MAIN"
   ErrorUndefinedVariable -> "ERROR_UNDEFINED_VARIABLE"
   ErrorNotAFunction -> "ERROR_NOT_A_FUNCTION"
+  ErrorNotAFunctionText{} -> "ERROR_NOT_A_FUNCTION"
   ErrorNotATuple -> "ERROR_NOT_A_TUPLE"
   ErrorNotARecord -> "ERROR_NOT_A_RECORD"
   ErrorNotAList -> "ERROR_NOT_A_LIST"
@@ -113,7 +115,7 @@ renderErrorTypeOnlyCode = \case
   ErrorAmbiguousPanicType -> "ERROR_AMBIGUOUS_PANIC_TYPE"
   ErrorNotAReference -> "ERROR_NOT_A_REFERENCE"
   ErrorUnexpectedMemoryAddress -> "ERROR_UNEXPECTED_MEMORY_ADDRESS"
-  ErrorUnexpectedSubtype -> "ERROR_UNEXPECTED_SUBTYPE"
+  ErrorUnexpectedSubtype{} -> "ERROR_UNEXPECTED_SUBTYPE"
 
 renderErrorType :: ErrorType -> Text
 renderErrorType t = case t of
@@ -121,7 +123,12 @@ renderErrorType t = case t of
     renderErrorTypeOnlyCode t <> ": " <>
     "Expected type: " <> pp needed <> "\n" <>
     "But got: " <> pp actual
+  ErrorUnexpectedSubtype actual needed ->
+    renderErrorTypeOnlyCode t <> ": " <>
+    "Expected type: " <> pp needed <> "\n" <>
+    "But got: " <> pp actual
   ErrorUnexpectedTypeForExpressionText text -> renderErrorTypeOnlyCode t <> ": " <> text
+  ErrorNotAFunctionText text -> renderErrorTypeOnlyCode t <> ": " <> text
   ErrorMissingRecordFields name -> renderErrorTypeOnlyCode t <> ": " <> name
   ErrorTupleIndexOutOfBounds index -> renderErrorTypeOnlyCode t <> ": " <> T.pack (show index)
   ErrorDuplicateRecordFields names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
