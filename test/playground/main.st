@@ -1,7 +1,10 @@
 language core;
-
-extend with #sum-types;
-
-fn main(n : Nat) -> Nat + Nat {
-  return (fn (a : Nat) { return inl(0) }) (0)
+extend with #variants, #natural-literals, #top-type, #bottom-type, #structural-subtyping;
+fn fail (n : Nat) -> <| failure : Top, value : Nat |>
+{
+  return <| failure = 1 |>
+}
+fn main (n : Nat) -> <| value : Nat, failure : Top, value2 : Bool |>
+{
+  return fail (n)
 }

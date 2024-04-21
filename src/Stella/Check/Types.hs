@@ -111,7 +111,7 @@ eqWithSubtyping (SimpleType actual) (SimpleType expected) = actual == expected
 eqWithSubtyping (FuncType actual) (FuncType expected)
   | length actual.argsType /= length expected.argsType = False
   | otherwise =
-      and (zipWith eqWithSubtyping actual.argsType expected.argsType)
+      and (zipWith eqWithSubtyping expected.argsType actual.argsType)
       && eqWithSubtyping actual.returnType expected.returnType
 
 eqWithSubtyping (ListType actual) (ListType expected) = eqWithSubtyping actual expected
@@ -133,7 +133,7 @@ eqWithSubtyping (SumType actual) (SumType expected)
 eqWithSubtyping
   (VariantType (VariantTypeData actual))
   (VariantType (VariantTypeData expected))
-  = Map.isSubmapOfBy f expected actual
+  = Map.isSubmapOfBy f actual expected
     where
       f Nothing Nothing = True
       f (Just t1) (Just t2) = eqWithSubtyping t1 t2
