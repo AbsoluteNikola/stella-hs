@@ -1,5 +1,5 @@
 module Stella.Check.Types where
-import Data.Text
+import Data.Text (Text)
 import qualified Data.Map as Map
 import Stella.Check.Utils
 import qualified Data.Text as T
@@ -80,7 +80,15 @@ data SType
   | RecordType RecordTypeData
   | SumType SumTypeData
   | VariantType VariantTypeData
+  | RefType SType
+  | Top
+  | Bottom
   deriving (Eq, Show)
+
+unit_, bool_, nat_ :: SType
+unit_ = SimpleType Unit
+bool_ = SimpleType Boolean
+nat_ = SimpleType Nat
 
 instance Pretty SType where
   pp = \case
@@ -92,8 +100,51 @@ instance Pretty SType where
     RecordType t -> pp t
     SumType t -> pp t
     VariantType t -> pp t
+    RefType t -> "&" <> pp t
+    Top -> "Top"
+    Bottom -> "Bottom"
 
-unit_, bool_, nat_ :: SType
-unit_ = SimpleType Unit
-bool_ = SimpleType Boolean
-nat_ = SimpleType Nat
+eqWithSubtyping :: SType -> SType -> Bool
+
+eqWithSubtyping (SimpleType actual) (SimpleType expected) = actual == expected
+
+eqWithSubtyping (FuncType actual) (FuncType expected)
+  | length actual.argsType /= length expected.argsType = False
+  | otherwise =
+      and (zipWith eqWithSubtyping expected.argsType actual.argsType)
+      && eqWithSubtyping actual.returnType expected.returnType
+
+eqWithSubtyping (ListType actual) (ListType expected) = eqWithSubtyping actual expected
+
+eqWithSubtyping (TupleType actual) (TupleType expected)
+  | length actual.tupleTypes /= length expected.tupleTypes = False
+  | otherwise =
+      and (zipWith eqWithSubtyping actual.tupleTypes expected.tupleTypes)
+
+eqWithSubtyping
+  (RecordType (RecordTypeData actual))
+  (RecordType (RecordTypeData expected))
+  = Map.isSubmapOfBy eqWithSubtyping expected actual
+
+eqWithSubtyping (SumType actual) (SumType expected)
+  =  (actual.leftType `eqWithSubtyping` expected.leftType)
+  && (actual.rightType `eqWithSubtyping` expected.rightType)
+
+eqWithSubtyping
+  (VariantType (VariantTypeData actual))
+  (VariantType (VariantTypeData expected))
+  = Map.isSubmapOfBy f actual expected
+    where
+      f Nothing Nothing = True
+      f (Just t1) (Just t2) = eqWithSubtyping t1 t2
+      f _ _ = False
+
+eqWithSubtyping (RefType actual) (RefType expected)
+  = (actual `eqWithSubtyping` expected) && (expected `eqWithSubtyping` actual)
+
+eqWithSubtyping Bottom _ = True
+eqWithSubtyping _ Top = True
+
+eqWithSubtyping actual expected
+  | actual == expected = True
+  | otherwise = False

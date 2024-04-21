@@ -34,6 +34,7 @@ checkPatternsByType type_ patterns = case NE.head patterns of
   PatternInt{} -> checkNatPatterns patterns
   PatternSucc{} -> checkNatPatterns patterns
   PatternVar{} -> True -- always exhaustive
+  PatternCastAs{} -> True
 
 checkNatPatterns :: NE.NonEmpty Pattern -> Bool
 checkNatPatterns _ = False -- True only if there is a Var pattern and it checked on the top level

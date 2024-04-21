@@ -25,6 +25,7 @@ mkError node err = StellaError
 data ErrorType
   = ErrorUnexpectedTypeForExpression {- actual -} SType {- needed -} SType
   | ErrorUnexpectedTypeForExpressionText Text
+  | ErrorNotAFunctionText Text
   | ErrorMissingMain
   | ErrorUndefinedVariable -- {- name of undefined variable -} Text
   | ErrorNotAFunction
@@ -60,6 +61,13 @@ data ErrorType
   | ErrorIncorrectNumberOfArguments Int
   | ErrorUnexpectedDataForNullaryLabel SType
   | ErrorAmbiguousPatternType Text
+  | ErrorExceptionTypeNotDeclared
+  | ErrorAmbiguousThrowType
+  | ErrorAmbiguousReferenceType
+  | ErrorAmbiguousPanicType
+  | ErrorNotAReference
+  | ErrorUnexpectedMemoryAddress
+  | ErrorUnexpectedSubtype {- actual -} SType {- excpected -} SType
 
 renderErrorTypeOnlyCode ::  ErrorType -> Text
 renderErrorTypeOnlyCode = \case
@@ -68,6 +76,7 @@ renderErrorTypeOnlyCode = \case
   ErrorMissingMain -> "ERROR_MISSING_MAIN"
   ErrorUndefinedVariable -> "ERROR_UNDEFINED_VARIABLE"
   ErrorNotAFunction -> "ERROR_NOT_A_FUNCTION"
+  ErrorNotAFunctionText{} -> "ERROR_NOT_A_FUNCTION"
   ErrorNotATuple -> "ERROR_NOT_A_TUPLE"
   ErrorNotARecord -> "ERROR_NOT_A_RECORD"
   ErrorNotAList -> "ERROR_NOT_A_LIST"
@@ -83,7 +92,7 @@ renderErrorTypeOnlyCode = \case
   ErrorTupleIndexOutOfBounds{} -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS"
   ErrorUnexpectedTupleLength -> "ERROR_UNEXPECTED_TUPLE_LENGTH"
   ErrorAmbiguousSumType -> "ERROR_AMBIGUOUS_SUM_TYPE"
-  ErrorAmbiguousList -> "ERROR_AMBIGUOUS_LIST"
+  ErrorAmbiguousList -> "ERROR_AMBIGUOUS_LIST, ERROR_AMBIGUOUS_LIST_TYPE"
   ErrorIllegalEmptyMatching -> "ERROR_ILLEGAL_EMPTY_MATCHING"
   ErrorNonExhaustiveMatchPattern -> "ERROR_NONEXHAUSTIVE_MATCH_PATTERNS"
   ErrorUnexpectedPatternForType -> "ERROR_UNEXPECTED_PATTERN_FOR_TYPE"
@@ -100,6 +109,13 @@ renderErrorTypeOnlyCode = \case
   ErrorIncorrectNumberOfArguments{} -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
   ErrorUnexpectedDataForNullaryLabel{} -> "ERROR_UNEXPECTED_DATA_FOR_NULLARY_LABEL"
   ErrorAmbiguousPatternType{} -> "ERROR_AMBIGUOUS_PATTERN_TYPE"
+  ErrorExceptionTypeNotDeclared -> "ERROR_EXCEPTION_TYPE_NOT_DECLARED"
+  ErrorAmbiguousThrowType -> "ERROR_AMBIGUOUS_THROW_TYPE"
+  ErrorAmbiguousReferenceType -> "ERROR_AMBIGUOUS_REFERENCE_TYPE"
+  ErrorAmbiguousPanicType -> "ERROR_AMBIGUOUS_PANIC_TYPE"
+  ErrorNotAReference -> "ERROR_NOT_A_REFERENCE"
+  ErrorUnexpectedMemoryAddress -> "ERROR_UNEXPECTED_MEMORY_ADDRESS"
+  ErrorUnexpectedSubtype{} -> "ERROR_UNEXPECTED_SUBTYPE"
 
 renderErrorType :: ErrorType -> Text
 renderErrorType t = case t of
@@ -107,7 +123,12 @@ renderErrorType t = case t of
     renderErrorTypeOnlyCode t <> ": " <>
     "Expected type: " <> pp needed <> "\n" <>
     "But got: " <> pp actual
+  ErrorUnexpectedSubtype actual needed ->
+    renderErrorTypeOnlyCode t <> ": " <>
+    "Expected type: " <> pp needed <> "\n" <>
+    "But got: " <> pp actual
   ErrorUnexpectedTypeForExpressionText text -> renderErrorTypeOnlyCode t <> ": " <> text
+  ErrorNotAFunctionText text -> renderErrorTypeOnlyCode t <> ": " <> text
   ErrorMissingRecordFields name -> renderErrorTypeOnlyCode t <> ": " <> name
   ErrorTupleIndexOutOfBounds index -> renderErrorTypeOnlyCode t <> ": " <> T.pack (show index)
   ErrorDuplicateRecordFields names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names

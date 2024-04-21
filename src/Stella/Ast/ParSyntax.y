@@ -161,49 +161,50 @@ import qualified Data.Text
   ']'             { PT _ (TS _ 35)           }
   'and'           { PT _ (TS _ 36)           }
   'as'            { PT _ (TS _ 37)           }
-  'cast'          { PT _ (TS _ 38)           }
-  'catch'         { PT _ (TS _ 39)           }
-  'cons'          { PT _ (TS _ 40)           }
-  'core'          { PT _ (TS _ 41)           }
-  'else'          { PT _ (TS _ 42)           }
-  'exception'     { PT _ (TS _ 43)           }
-  'extend'        { PT _ (TS _ 44)           }
-  'false'         { PT _ (TS _ 45)           }
-  'fix'           { PT _ (TS _ 46)           }
-  'fn'            { PT _ (TS _ 47)           }
-  'fold'          { PT _ (TS _ 48)           }
-  'forall'        { PT _ (TS _ 49)           }
-  'generic'       { PT _ (TS _ 50)           }
-  'if'            { PT _ (TS _ 51)           }
-  'in'            { PT _ (TS _ 52)           }
-  'inl'           { PT _ (TS _ 53)           }
-  'inline'        { PT _ (TS _ 54)           }
-  'inr'           { PT _ (TS _ 55)           }
-  'language'      { PT _ (TS _ 56)           }
-  'let'           { PT _ (TS _ 57)           }
-  'letrec'        { PT _ (TS _ 58)           }
-  'match'         { PT _ (TS _ 59)           }
-  'new'           { PT _ (TS _ 60)           }
-  'not'           { PT _ (TS _ 61)           }
-  'or'            { PT _ (TS _ 62)           }
-  'panic!'        { PT _ (TS _ 63)           }
-  'return'        { PT _ (TS _ 64)           }
-  'succ'          { PT _ (TS _ 65)           }
-  'then'          { PT _ (TS _ 66)           }
-  'throw'         { PT _ (TS _ 67)           }
-  'throws'        { PT _ (TS _ 68)           }
-  'true'          { PT _ (TS _ 69)           }
-  'try'           { PT _ (TS _ 70)           }
-  'type'          { PT _ (TS _ 71)           }
-  'unfold'        { PT _ (TS _ 72)           }
-  'unit'          { PT _ (TS _ 73)           }
-  'variant'       { PT _ (TS _ 74)           }
-  'with'          { PT _ (TS _ 75)           }
-  '{'             { PT _ (TS _ 76)           }
-  '|'             { PT _ (TS _ 77)           }
-  '|>'            { PT _ (TS _ 78)           }
-  '}'             { PT _ (TS _ 79)           }
-  'µ'             { PT _ (TS _ 80)           }
+  'auto'          { PT _ (TS _ 38)           }
+  'cast'          { PT _ (TS _ 39)           }
+  'catch'         { PT _ (TS _ 40)           }
+  'cons'          { PT _ (TS _ 41)           }
+  'core'          { PT _ (TS _ 42)           }
+  'else'          { PT _ (TS _ 43)           }
+  'exception'     { PT _ (TS _ 44)           }
+  'extend'        { PT _ (TS _ 45)           }
+  'false'         { PT _ (TS _ 46)           }
+  'fix'           { PT _ (TS _ 47)           }
+  'fn'            { PT _ (TS _ 48)           }
+  'fold'          { PT _ (TS _ 49)           }
+  'forall'        { PT _ (TS _ 50)           }
+  'generic'       { PT _ (TS _ 51)           }
+  'if'            { PT _ (TS _ 52)           }
+  'in'            { PT _ (TS _ 53)           }
+  'inl'           { PT _ (TS _ 54)           }
+  'inline'        { PT _ (TS _ 55)           }
+  'inr'           { PT _ (TS _ 56)           }
+  'language'      { PT _ (TS _ 57)           }
+  'let'           { PT _ (TS _ 58)           }
+  'letrec'        { PT _ (TS _ 59)           }
+  'match'         { PT _ (TS _ 60)           }
+  'new'           { PT _ (TS _ 61)           }
+  'not'           { PT _ (TS _ 62)           }
+  'or'            { PT _ (TS _ 63)           }
+  'panic!'        { PT _ (TS _ 64)           }
+  'return'        { PT _ (TS _ 65)           }
+  'succ'          { PT _ (TS _ 66)           }
+  'then'          { PT _ (TS _ 67)           }
+  'throw'         { PT _ (TS _ 68)           }
+  'throws'        { PT _ (TS _ 69)           }
+  'true'          { PT _ (TS _ 70)           }
+  'try'           { PT _ (TS _ 71)           }
+  'type'          { PT _ (TS _ 72)           }
+  'unfold'        { PT _ (TS _ 73)           }
+  'unit'          { PT _ (TS _ 74)           }
+  'variant'       { PT _ (TS _ 75)           }
+  'with'          { PT _ (TS _ 76)           }
+  '{'             { PT _ (TS _ 77)           }
+  '|'             { PT _ (TS _ 78)           }
+  '|>'            { PT _ (TS _ 79)           }
+  '}'             { PT _ (TS _ 80)           }
+  'µ'             { PT _ (TS _ 81)           }
   L_integ         { PT _ (TI _)              }
   L_StellaIdent   { PT _ (T_StellaIdent _)   }
   L_ExtensionName { PT _ (T_ExtensionName _) }
@@ -338,7 +339,8 @@ ExprData
 
 Pattern :: { (Stella.Ast.AbsSyntax.BNFC'Position, Stella.Ast.AbsSyntax.Pattern) }
 Pattern
-  : Pattern 'as' Type { (fst $1, Stella.Ast.AbsSyntax.PatternAsc (fst $1) (snd $1) (snd $3)) }
+  : Pattern 'cast' 'as' Type { (fst $1, Stella.Ast.AbsSyntax.PatternCastAs (fst $1) (snd $1) (snd $4)) }
+  | Pattern 'as' Type { (fst $1, Stella.Ast.AbsSyntax.PatternAsc (fst $1) (snd $1) (snd $3)) }
   | '<|' StellaIdent PatternData '|>' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternVariant (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $3)) }
   | 'inl' '(' Pattern ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternInl (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
   | 'inr' '(' Pattern ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.PatternInr (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
@@ -446,7 +448,7 @@ Expr4
 
 Expr5 :: { (Stella.Ast.AbsSyntax.BNFC'Position, Stella.Ast.AbsSyntax.Expr) }
 Expr5
-  : 'new' '(' Expr5 ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.Ref (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
+  : 'new' '(' Expr ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.Ref (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
   | '*' Expr5 { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.Deref (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2)) }
   | Expr6 { (fst $1, (snd $1)) }
 
@@ -466,6 +468,7 @@ Expr6
   | 'throw' '(' Expr ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.Throw (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
   | 'try' '{' Expr '}' 'catch' '{' Pattern '=>' Expr '}' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TryCatch (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $7) (snd $9)) }
   | 'try' '{' Expr '}' 'with' '{' Expr '}' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TryWith (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $7)) }
+  | 'try' '{' Expr '}' 'cast' 'as' Type '{' Pattern '=>' Expr '}' 'with' '{' Expr '}' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TryCastAs (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $7) (snd $9) (snd $11) (snd $15)) }
   | 'inl' '(' Expr ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.Inl (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
   | 'inr' '(' Expr ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.Inr (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
   | 'succ' '(' Expr ')' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.Succ (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3)) }
@@ -490,7 +493,8 @@ Expr7
 
 Type :: { (Stella.Ast.AbsSyntax.BNFC'Position, Stella.Ast.AbsSyntax.Type) }
 Type
-  : 'fn' '(' ListType ')' '->' Type { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TypeFun (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $6)) }
+  : 'auto' { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TypeAuto (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1))) }
+  | 'fn' '(' ListType ')' '->' Type { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TypeFun (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $6)) }
   | 'forall' ListStellaIdent '.' Type { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TypeForAll (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4)) }
   | 'µ' StellaIdent '.' Type { (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1), Stella.Ast.AbsSyntax.TypeRec (uncurry Stella.Ast.AbsSyntax.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4)) }
   | Type1 { (fst $1, (snd $1)) }
