@@ -92,7 +92,7 @@ renderErrorTypeOnlyCode = \case
   ErrorTupleIndexOutOfBounds{} -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS"
   ErrorUnexpectedTupleLength -> "ERROR_UNEXPECTED_TUPLE_LENGTH"
   ErrorAmbiguousSumType -> "ERROR_AMBIGUOUS_SUM_TYPE"
-  ErrorAmbiguousList -> "ERROR_AMBIGUOUS_LIST"
+  ErrorAmbiguousList -> "ERROR_AMBIGUOUS_LIST, ERROR_AMBIGUOUS_LIST_TYPE"
   ErrorIllegalEmptyMatching -> "ERROR_ILLEGAL_EMPTY_MATCHING"
   ErrorNonExhaustiveMatchPattern -> "ERROR_NONEXHAUSTIVE_MATCH_PATTERNS"
   ErrorUnexpectedPatternForType -> "ERROR_UNEXPECTED_PATTERN_FOR_TYPE"
