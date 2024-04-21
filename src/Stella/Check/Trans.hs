@@ -168,9 +168,6 @@ transDecl x = case x of
     exprT <- Env.withEnv envWithParams $ do
       traverse_ transDecl decls
       transExpr (Just retType) expr
-    debugPrint exprT
-    debugPrint retType
-    debugPrint $ eqWithSubtyping exprT retType
     whenTypeNotEqDefError expr exprT retType
     pure $ Just exprT
   DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failNotImplemented x
