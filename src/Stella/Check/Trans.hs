@@ -216,7 +216,7 @@ transType x = case x of
     recordFields <- traverse transRecordFieldType recordfieldtypes
     checkThatNamesUniq x ErrorDuplicateRecordFields$ fst <$> recordFields
     pure $ RecordType RecordTypeData
-      { recordFields = recordFields
+      { recordFields = Map.fromList recordFields
       }
   TypeVariant pos variantfieldtypes -> do
     variantFields <- traverse transVariantFieldType variantfieldtypes
@@ -339,7 +339,7 @@ transPattern t x = case x of
 transLabelledPattern :: RecordTypeData -> LabelledPattern -> CheckerM [(Text, SType)]
 transLabelledPattern (RecordTypeData rtd) x = case x of
   ALabelledPattern pos (StellaIdent name) pattern_
-    | Just fieldType <- lookup name rtd
+    | Just fieldType <- Map.lookup name rtd
     -> transPattern fieldType pattern_
   _ -> failWith x ErrorUnexpectedPatternForType
 
@@ -484,7 +484,7 @@ transExpr desiredType x = case x of
     rtd <- transExpr Nothing expr >>= \case
       RecordType (RecordTypeData rtd) -> pure rtd
       _ -> failWith expr ErrorNotARecord
-    case lookup name rtd of
+    case Map.lookup name rtd of
       Just t -> pure t
       Nothing -> failWith expr (ErrorUnexpectedFieldAccess name)
   DotTuple pos expr index -> do
@@ -506,12 +506,12 @@ transExpr desiredType x = case x of
         _ -> Nothing
     bindings <- for bindings_ $ \(ABinding _ (StellaIdent name) expr) -> do
       let
-        desiredTypeForField = lookup name =<< desiredFields
+        desiredTypeForField = Map.lookup name =<< desiredFields
       type_ <- transExpr desiredTypeForField expr
       pure (name, type_)
     checkThatNamesUniq x ErrorDuplicateRecordFields $ fst <$> bindings
     pure $ RecordType RecordTypeData
-      { recordFields = bindings
+      { recordFields = Map.fromList bindings
       }
   ConsList pos expr1 expr2 -> do
     expr1T <- transExpr Nothing expr1

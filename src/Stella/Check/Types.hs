@@ -17,14 +17,14 @@ instance Pretty FuncTypeData where
     pp returnType
 
 newtype RecordTypeData = RecordTypeData
-  { recordFields :: [(Text, SType)]
+  { recordFields :: Map.Map Text SType
   } deriving (Eq, Show)
 
 instance Pretty RecordTypeData where
   pp RecordTypeData{..}=
     "{" <>
     T.intercalate ", "
-      ((\(name, t) -> name <> " : " <> pp t) <$> recordFields) <>
+      ((\(name, t) -> name <> " : " <> pp t) <$> Map.toList recordFields) <>
     "}"
 
 newtype VariantTypeData = VariantTypeData
@@ -122,8 +122,8 @@ eqWithSubtyping (TupleType actual) (TupleType expected)
       and (zipWith eqWithSubtyping actual.tupleTypes expected.tupleTypes)
 
 eqWithSubtyping
-  (RecordType (RecordTypeData (Map.fromList -> actual)))
-  (RecordType (RecordTypeData (Map.fromList -> expected)))
+  (RecordType (RecordTypeData actual))
+  (RecordType (RecordTypeData expected))
   = Map.isSubmapOfBy eqWithSubtyping expected actual
 
 eqWithSubtyping (SumType actual) (SumType expected)
