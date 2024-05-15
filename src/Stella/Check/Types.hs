@@ -3,6 +3,7 @@ import Data.Text (Text)
 import qualified Data.Map as Map
 import Stella.Check.Utils
 import qualified Data.Text as T
+import qualified Data.Set as Set
 
 data FuncTypeData = FuncTypeData
   { argsType :: [SType]
@@ -124,7 +125,7 @@ eqWithSubtyping (TupleType actual) (TupleType expected)
 eqWithSubtyping
   (RecordType (RecordTypeData actual))
   (RecordType (RecordTypeData expected))
-  = Map.isSubmapOfBy eqWithSubtyping expected actual
+  = Map.isSubmapOfBy (flip eqWithSubtyping) expected actual
 
 eqWithSubtyping (SumType actual) (SumType expected)
   =  (actual.leftType `eqWithSubtyping` expected.leftType)
@@ -148,3 +149,22 @@ eqWithSubtyping _ Top = True
 eqWithSubtyping actual expected
   | actual == expected = True
   | otherwise = False
+
+recordFieldsMissing :: SType -> SType -> Bool
+recordFieldsMissing
+  (RecordType (RecordTypeData (Map.keysSet -> actual)))
+  (RecordType (RecordTypeData (Map.keysSet -> expected)))
+  = Set.isSubsetOf actual expected
+recordFieldsMissing _ _ = False
+
+tupleLengthDifference :: SType -> SType -> Bool
+tupleLengthDifference (TupleType actual) (TupleType expected) =
+  length actual.tupleTypes /= length expected.tupleTypes
+tupleLengthDifference _ _ = False
+
+variantUnexpectedLabel :: SType -> SType -> Bool
+variantUnexpectedLabel
+  (VariantType (VariantTypeData (Map.keysSet -> actual)))
+  (VariantType (VariantTypeData (Map.keysSet -> expected))) =
+    not $ Set.isSubsetOf actual expected
+variantUnexpectedLabel _ _ = False

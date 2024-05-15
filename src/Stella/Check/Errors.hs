@@ -38,11 +38,11 @@ data ErrorType
   | ErrorUnexpectedRecord
   | ErrorUnexpectedList
   | ErrorUnexpectedInjection
-  | ErrorMissingRecordFields Text
+  | ErrorMissingRecordFields {- actual -} SType {- needed -} SType
   | ErrorUnexpectedRecordFields
   | ErrorUnexpectedFieldAccess Text
   | ErrorTupleIndexOutOfBounds Integer
-  | ErrorUnexpectedTupleLength
+  | ErrorUnexpectedTupleLength {- actual -} SType {- needed -} SType
   | ErrorAmbiguousSumType
   | ErrorAmbiguousList
   | ErrorAmbiguousVariantType
@@ -52,7 +52,8 @@ data ErrorType
   | ErrorUnimplementedCase
   | ErrorDuplicateRecordFields [Text]
   | ErrorDuplicatePatternVariable [Text]
-  | ErrorUnexpectedVariantLabel Text
+  | ErrorUnexpectedVariantLabelText Text
+  | ErrorUnexpectedVariantLabel  {- actual -} SType {- needed -} SType
   | ErrorUnexpectedVariant (Maybe SType)
   | ErrorMissingDataForLabel Text
   | ErrorUnexpectedNonNullaryVariantPattern
@@ -90,7 +91,7 @@ renderErrorTypeOnlyCode = \case
   ErrorUnexpectedRecordFields -> "ERROR_UNEXPECTED_RECORD_FIELDS"
   ErrorUnexpectedFieldAccess{} -> "ERROR_UNEXPECTED_FIELD_ACCESS"
   ErrorTupleIndexOutOfBounds{} -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS"
-  ErrorUnexpectedTupleLength -> "ERROR_UNEXPECTED_TUPLE_LENGTH"
+  ErrorUnexpectedTupleLength{} -> "ERROR_UNEXPECTED_TUPLE_LENGTH"
   ErrorAmbiguousSumType -> "ERROR_AMBIGUOUS_SUM_TYPE"
   ErrorAmbiguousList -> "ERROR_AMBIGUOUS_LIST, ERROR_AMBIGUOUS_LIST_TYPE"
   ErrorIllegalEmptyMatching -> "ERROR_ILLEGAL_EMPTY_MATCHING"
@@ -102,6 +103,7 @@ renderErrorTypeOnlyCode = \case
   ErrorAmbiguousVariantType -> "ERROR_AMBIGUOUS_VARIANT_TYPE"
   ErrorUnexpectedVariant{} -> "ERROR_UNEXPECTED_VARIANT"
   ErrorUnexpectedVariantLabel{} -> "ERROR_UNEXPECTED_VARIANT_LABEL"
+  ErrorUnexpectedVariantLabelText{} -> "ERROR_UNEXPECTED_VARIANT_LABEL"
   ErrorMissingDataForLabel{} -> "ERROR_MISSING_DATA_FOR_LABEL"
   ErrorUnexpectedNonNullaryVariantPattern -> "ERROR_UNEXPECTED_NON_NULLARY_VARIANT_PATTERN"
   ErrorUnexpectedNullaryVariantPattern -> "ERROR_UNEXPECTED_NULLARY_VARIANT_PATTERN"
@@ -120,22 +122,33 @@ renderErrorTypeOnlyCode = \case
 renderErrorType :: ErrorType -> Text
 renderErrorType t = case t of
   ErrorUnexpectedTypeForExpression actual needed ->
-    renderErrorTypeOnlyCode t <> ": " <>
+    renderErrorTypeOnlyCode t <> ": \n" <>
     "Expected type: " <> pp needed <> "\n" <>
     "But got: " <> pp actual
   ErrorUnexpectedSubtype actual needed ->
-    renderErrorTypeOnlyCode t <> ": " <>
+    renderErrorTypeOnlyCode t <> ": \n" <>
     "Expected type: " <> pp needed <> "\n" <>
     "But got: " <> pp actual
   ErrorUnexpectedTypeForExpressionText text -> renderErrorTypeOnlyCode t <> ": " <> text
   ErrorNotAFunctionText text -> renderErrorTypeOnlyCode t <> ": " <> text
-  ErrorMissingRecordFields name -> renderErrorTypeOnlyCode t <> ": " <> name
+  ErrorMissingRecordFields actual expected ->
+    renderErrorTypeOnlyCode t <> ": \n" <>
+    "Expected type: " <> pp expected <> "\n" <>
+    "But got: " <> pp actual
+  ErrorUnexpectedTupleLength actual expected ->
+    renderErrorTypeOnlyCode t <> ": \n" <>
+    "Expected type: " <> pp expected <> "\n" <>
+    "But got: " <> pp actual
+  ErrorUnexpectedVariantLabel actual expected ->
+    renderErrorTypeOnlyCode t <> ": \n" <>
+    "Expected type: " <> pp expected <> "\n" <>
+    "But got: " <> pp actual
   ErrorTupleIndexOutOfBounds index -> renderErrorTypeOnlyCode t <> ": " <> T.pack (show index)
   ErrorDuplicateRecordFields names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
   ErrorDuplicatePatternVariable names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
   ErrorUnexpectedVariant Nothing -> renderErrorTypeOnlyCode t
   ErrorUnexpectedVariant (Just type_) -> renderErrorTypeOnlyCode t <> ": " <> pp type_
-  ErrorUnexpectedVariantLabel name -> renderErrorTypeOnlyCode t <> ": " <> name
+  ErrorUnexpectedVariantLabelText name -> renderErrorTypeOnlyCode t <> ": " <> name
   ErrorIncorrectArityOfMain n -> renderErrorTypeOnlyCode t <> ": " <> pp n
   ErrorIncorrectNumberOfArguments n -> renderErrorTypeOnlyCode t <> ": " <> pp n
   ErrorUnexpectedFieldAccess n -> renderErrorTypeOnlyCode t <> ": " <> pp n
