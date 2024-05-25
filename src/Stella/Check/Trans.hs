@@ -33,6 +33,7 @@ import Stella.Check.Exhaustiveness (checkPatternsExhaustive)
 import qualified Data.Set as Set
 import Control.Monad.Reader.Class (asks)
 import Control.Monad (void)
+import Control.Monad (when)
 
 type Checker = CheckerM SType
 
@@ -68,7 +69,13 @@ whenTypeNotEqDefError node actual expected = do
     eqF = if isSubtypingEnabled
         then eqWithSubtyping
         else (==)
-  unless (eqF actual expected) $
+  unless (eqF actual expected) $ do
+    when (recordFieldsMissing actual expected) $
+      failWith node $ ErrorMissingRecordFields actual expected
+    when (tupleLengthDifference actual expected) $
+      failWith node $ ErrorUnexpectedTupleLength actual expected
+    when (variantUnexpectedLabel actual expected) $
+      failWith node $ ErrorUnexpectedVariantLabel actual expected
     if isSubtypingEnabled
       then failWith node $ ErrorUnexpectedSubtype actual expected
       else failWith node $ ErrorUnexpectedTypeForExpression actual expected
@@ -366,7 +373,10 @@ transExpr desiredType x = case x of
       RefType innerType -> pure innerType
       _ -> failWith x ErrorNotAReference
     expr2Type <- transExpr (Just t) expr2
-    whenTypeNotEqDefError expr1 t expr2Type
+    debugPrint t
+    debugPrint expr2
+    debugPrint expr2Type
+    whenTypeNotEqDefError expr1 expr2Type t
     pure unit_
   If pos expr1 expr2 expr3 -> do
     expr1Type <- transExpr (Just bool_) expr1
@@ -405,7 +415,7 @@ transExpr desiredType x = case x of
   TypeAsc pos expr type_ -> do
     t <- transType type_
     exprT <- transExpr (Just t) expr
-    whenTypeNotEqDefError expr exprT t
+    whenTypeNotEqDefError expr t exprT
     pure exprT
   TypeCast pos expr type_ -> do
     void $ transExpr Nothing expr
@@ -434,7 +444,7 @@ transExpr desiredType x = case x of
           (Nothing, Just vt ) -> failWith x $ ErrorMissingDataForLabel name
           (Just et, Nothing) -> failWith x $ ErrorUnexpectedDataForNullaryLabel et
         pure v
-      Nothing -> failWith x (ErrorUnexpectedVariantLabel name)
+      Nothing -> failWith x (ErrorUnexpectedVariantLabelText name)
     Just dt -> failWith x $ ErrorUnexpectedVariant (Just dt)
     Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
      $ failWith x ErrorAmbiguousVariantType
@@ -519,7 +529,7 @@ transExpr desiredType x = case x of
   ConsList pos expr1 expr2 -> do
     expr1T <- transExpr Nothing expr1
     expr2T <- transExpr (Just $ ListType expr1T) expr2
-    whenTypeNotEqDefError expr1 (ListType expr1T) expr2T
+    whenTypeNotEqDefError expr1 expr2T (ListType expr1T)
     pure $ ListType expr1T
   Head pos expr -> do
     listInnerType <- transExpr Nothing expr >>= \case
