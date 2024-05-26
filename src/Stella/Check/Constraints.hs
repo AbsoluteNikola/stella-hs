@@ -78,7 +78,8 @@ containsIn t1 = \case
     containsIn t1 ftd.returnType || any (containsIn t1) ftd.argsType
   ListType t -> containsIn t1 t
   SimpleType _ -> False
-  TypeVarType _ -> False
+  UniversalTypeVar _ -> False
+  UniversalType utd -> containsIn t1 utd.innerType
   TupleType ttd -> any (containsIn t1) ttd.tupleTypes
   RecordType _ -> False
   SumType t -> containsIn t1 t.leftType || containsIn t1 t.rightType

@@ -105,7 +105,7 @@ transProgram x = case x of
 
 data TransDeclData = TransDeclData
   { typeAliases :: [(Text, SType)]
-  , functions :: [(Text, (FuncTypeData, Decl))]
+  , functions :: [(Text, (SType, Decl))]
   , exceptionType :: Maybe SType
   } deriving (Show)
 
@@ -115,9 +115,10 @@ transDeclSignatures decls = do
   pure Env.Env
     { typesEnv = Map.fromList transData.typeAliases
     , termsEnv = Map.fromList $ transData.functions
-      <&> \(name, (ftd, _)) -> (name, FuncType ftd)
+      <&> \(name, (ftd, _)) -> (name, ftd)
     , exceptionType = transData.exceptionType
     , extensions = mempty
+    , universalTypeVars = mempty -- TODO: check
     }
 
 transDeclsTypes :: [Decl] -> CheckerM TransDeclData
@@ -129,7 +130,7 @@ transDeclsTypes = foldlM go start
         argsTypes <- fmap snd <$> traverse transParamDecl paramdecls
         returnType <- transReturnType returntype
         let
-          func = FuncTypeData
+          func = FuncType FuncTypeData
             { argsType = argsTypes
             , returnType = returnType
             }
@@ -151,7 +152,21 @@ transDeclsTypes = foldlM go start
             let newExceptionType = VariantType VariantTypeData
                   { variants = Map.singleton name (Just exceptionType) }
             in pure cur{exceptionType = Just newExceptionType}
-      _ -> failNotImplemented dec
+      DeclFunGeneric pos annotations (StellaIdent name) typeVariables paramDecls returnType throwType decls expr -> do
+        let vars = typeVariables <&> \(StellaIdent varName) -> varName
+        innerType <- Env.withUniversalVars vars $ do
+          argsTypes <- fmap snd <$> traverse transParamDecl paramDecls
+          returnTypeT <- transReturnType returnType
+          pure $ FuncType FuncTypeData
+            { argsType = argsTypes
+            , returnType = returnTypeT
+            }
+        let
+          func = UniversalType UniversalTypeData
+            { innerType = innerType
+            , variables = vars
+            }
+        pure $ cur{functions = (name, (func, dec)) : cur.functions}
     start = TransDeclData [] [] Nothing
 
 transLanguageDecl :: LanguageDecl -> Checker
@@ -168,7 +183,7 @@ transDecl x = case x of
     env <- transDeclSignatures decls
     ftd <- lookupTermThrow x name >>= \case
       FuncType ftd -> pure ftd
-      _ -> error $ "Impossible happened: not found function " <> T.unpack name <> "after transDeclSignatures"
+      _ -> error $ "Impossible happened: not found function " <> T.unpack name <> " after transDeclSignatures"
 
     let envWithParams = Env.addTerms (zip (transParamDeclName <$> paramdecls) ftd.argsType) env
     exprT <- Env.withEnv envWithParams $ do
@@ -179,7 +194,23 @@ transDecl x = case x of
       then Env.addConstraint exprT ftd.returnType expr
       else whenTypeNotEqDefError expr exprT ftd.returnType
     pure $ Just exprT
-  DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failNotImplemented x
+  DeclFunGeneric pos annotations (StellaIdent name) typeVariables paramDecls returnType throwType decls expr -> do
+    let vars = typeVariables <&> \(StellaIdent varName) -> varName
+    Env.withUniversalVars vars $ do
+      env <- transDeclSignatures decls
+      ftd <- lookupTermThrow x name >>= \case
+        UniversalType (UniversalTypeData _ (FuncType ftd)) -> pure ftd
+        _ -> error $ "Impossible happened: not found function " <> T.unpack name <> " after transDeclSignatures"
+
+      let envWithParams = Env.addTerms (zip (transParamDeclName <$> paramDecls) ftd.argsType) env
+      exprT <- Env.withEnv envWithParams $ do
+        traverse_ transDecl decls
+        transExpr (Just ftd.returnType) expr
+      isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+      if isTypeReconstructionEnabled
+        then Env.addConstraint exprT ftd.returnType expr
+        else whenTypeNotEqDefError expr exprT ftd.returnType
+      pure $ Just exprT
   DeclTypeAlias pos (StellaIdent name) type_ -> Just <$> transType type_
   DeclExceptionType pos type_ -> pure Nothing
   DeclExceptionVariant pos (StellaIdent name) type_ -> pure Nothing
@@ -220,7 +251,14 @@ transType x = case x of
       { argsType = argsTypes
       , returnType = returnType
       }
-  TypeForAll pos stellaidents type_ -> failNotImplemented x
+  TypeForAll pos stellaidents type_ -> do
+    let vars = stellaidents <&> \(StellaIdent name) -> name
+    t <- Env.withUniversalVars vars $
+      transType type_
+    pure $ UniversalType UniversalTypeData
+      { variables = vars
+      , innerType = t
+      }
   TypeRec pos (StellaIdent name) type_ -> failNotImplemented x
   TypeSum pos type_1 type_2 -> do
     t1 <- transType type_1
@@ -257,7 +295,11 @@ transType x = case x of
   TypeRef pos type_ -> do
     innerType <- transType type_
     pure $ RefType innerType
-  TypeVar pos (StellaIdent name) -> pure $ TypeVarType name
+  TypeVar pos (StellaIdent name) -> do
+    exists <- Env.lookupUniversalVar name
+    if exists
+      then pure $ UniversalTypeVar name
+      else failWith x $ ErrorUndefinedTypeVariable name
   TypeAuto{} -> do
     v <- Env.newTypeVar
     pure v
@@ -415,7 +457,14 @@ transExpr desiredType x = case x of
     exprT <- Env.withTerms newVars $ do
       transExpr desiredType expr
     pure exprT
-  TypeAbstraction pos stellaidents expr -> failNotImplemented x
+  TypeAbstraction pos stellaidents expr -> do
+    let vars = stellaidents <&> \(StellaIdent name) -> name
+    t <- Env.withUniversalVars vars $
+      transExpr desiredType expr
+    pure $ UniversalType UniversalTypeData
+      { variables = vars
+      , innerType = t
+      }
   LessThan pos expr1 expr2 -> compareNatsOperator expr1 expr2
   LessThanOrEqual pos expr1 expr2 -> compareNatsOperator expr1 expr2
   GreaterThan pos expr1 expr2 -> compareNatsOperator expr1 expr2
@@ -533,7 +582,17 @@ transExpr desiredType x = case x of
             (expr,) <$> transExpr (Just t) expr
         -- some duplication of type check logic. TODO: rewrite in better times
         checkFunctionApplication x ftd argsWithTypes
-  TypeApplication pos expr types -> failNotImplemented x
+  TypeApplication pos expr types -> do
+    paramTypes <- for types transType
+    funcT <- transExpr Nothing expr -- desired type?
+    debugPrint funcT
+    utd <- case funcT of
+      UniversalType utd
+        | length utd.variables /= length paramTypes -> failWith x ErrorIncorrectNumberOfTypeArguments
+        | otherwise -> pure utd
+      _ -> failWith x ErrorNotAGenericFunction
+    let typesMap = Map.fromList $ zip utd.variables paramTypes
+    pure $ universalTypeSubstitute typesMap funcT
   DotRecord pos expr (StellaIdent name) -> do
     rtd <- transExpr Nothing expr >>= \case
       RecordType (RecordTypeData rtd) -> pure rtd

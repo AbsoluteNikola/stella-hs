@@ -4,6 +4,7 @@ import qualified Data.Map as Map
 import Stella.Check.Utils
 import qualified Data.Text as T
 import qualified Data.Set as Set
+import Data.Maybe (fromMaybe, mapMaybe)
 
 data FuncTypeData = FuncTypeData
   { argsType :: [SType]
@@ -59,6 +60,16 @@ instance Pretty SumTypeData where
   pp :: SumTypeData -> Text
   pp SumTypeData{..} = pp leftType <> " + " <> pp rightType
 
+data UniversalTypeData = UniversalTypeData
+  { variables :: [Text]
+  , innerType :: SType
+  } deriving (Eq, Show)
+
+instance Pretty UniversalTypeData where
+  pp :: UniversalTypeData -> Text
+  pp UniversalTypeData{..} = "forall " <> T.intercalate " " variables <> "." <> pp innerType
+
+
 data SimpleType
   = Unit
   | Boolean
@@ -76,7 +87,8 @@ data SType
   = FuncType FuncTypeData
   | ListType SType
   | SimpleType SimpleType
-  | TypeVarType Text -- type with name should be in env
+  | UniversalTypeVar Text
+  | UniversalType UniversalTypeData
   | TupleType TupleTypeData
   | RecordType RecordTypeData
   | SumType SumTypeData
@@ -97,7 +109,8 @@ instance Pretty SType where
     FuncType ftd -> pp ftd
     ListType t -> "[" <> pp t <> "]"
     SimpleType t -> pp t
-    TypeVarType t -> "type " <> t -- todo: fix me
+    UniversalTypeVar t -> t
+    UniversalType utd  -> pp utd
     TupleType t -> pp t
     RecordType t -> pp t
     SumType t -> pp t
@@ -170,3 +183,43 @@ variantUnexpectedLabel
   (VariantType (VariantTypeData (Map.keysSet -> expected))) =
     not $ Set.isSubsetOf actual expected
 variantUnexpectedLabel _ _ = False
+
+universalTypeSubstitute :: Map.Map Text SType -> SType -> SType
+universalTypeSubstitute varsMapping = \case
+  FuncType ftd -> FuncType FuncTypeData
+    { argsType = map (universalTypeSubstitute varsMapping) ftd.argsType
+    , returnType = universalTypeSubstitute varsMapping ftd.returnType
+    }
+  ListType t -> universalTypeSubstitute varsMapping t
+  SimpleType t -> SimpleType t
+  UniversalTypeVar t -> fromMaybe (UniversalTypeVar t) $ Map.lookup t varsMapping
+  UniversalType utd  ->
+    let
+      substituted = universalTypeSubstitute varsMapping utd.innerType
+      otherVars = mapMaybe
+        (\name -> maybe (Just name) (const Nothing) $ Map.lookup name varsMapping)
+        utd.variables
+    in if null otherVars
+      then substituted
+      else UniversalType UniversalTypeData
+        { variables = otherVars
+        , innerType = substituted
+        }
+  TupleType t -> TupleType TupleTypeData
+    { tupleTypes = map (universalTypeSubstitute varsMapping) t.tupleTypes
+    }
+  RecordType t -> RecordType RecordTypeData
+    { recordFields = Map.map (universalTypeSubstitute varsMapping) t.recordFields
+    }
+  SumType t -> SumType SumTypeData
+    { leftType = universalTypeSubstitute varsMapping t.leftType
+    , rightType = universalTypeSubstitute varsMapping t.rightType
+    }
+  VariantType t -> VariantType VariantTypeData
+    { variants = Map.map (>>= Just . universalTypeSubstitute varsMapping) t.variants
+    }
+  RefType t -> RefType $
+    universalTypeSubstitute varsMapping t
+  Top -> Top
+  Bottom -> Bottom
+  STypeVar n -> STypeVar n

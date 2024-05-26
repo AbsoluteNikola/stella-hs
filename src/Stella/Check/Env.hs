@@ -15,6 +15,7 @@ import Stella.Ast.AbsSyntax (Expr)
 data Env = Env
   { typesEnv :: Map.Map Text SType
   , termsEnv :: Map.Map Text SType
+  , universalTypeVars :: Set.Set Text
   , exceptionType :: Maybe SType
   , extensions :: Set.Set Text
   } deriving (Show)
@@ -31,6 +32,7 @@ defEnv :: Env
 defEnv = Env
   { typesEnv = Map.empty
   , termsEnv = Map.empty
+  , universalTypeVars = Set.empty
   , exceptionType = Nothing
   , extensions = Set.empty
   }
@@ -40,10 +42,16 @@ addTerms terms env = env{termsEnv = newTerms}
   where
     newTerms = Map.fromList terms `Map.union` env.termsEnv
 
+addUniversalTypeVars :: [Text] -> Env -> Env
+addUniversalTypeVars vars env = env
+  { universalTypeVars = Set.fromList vars `Set.union` env.universalTypeVars
+  }
+
 concatEnv :: Env -> Env -> Env
 concatEnv e1 e2 = Env
     { typesEnv = e2.typesEnv `Map.union` e1.typesEnv
     , termsEnv = e2.termsEnv `Map.union` e1.termsEnv
+    , universalTypeVars = e1.universalTypeVars <> e2.universalTypeVars
     , exceptionType = e1.exceptionType <|> e2.exceptionType
     , extensions = e1.extensions <> e2.extensions
     }
@@ -57,10 +65,19 @@ withEnv env = local (`concatEnv` env)
 withTerms :: [(Text, SType)] -> CheckerM a -> CheckerM a
 withTerms terms = local (addTerms terms)
 
+withUniversalVars :: [Text] -> CheckerM a -> CheckerM a
+withUniversalVars vars = local (addUniversalTypeVars vars)
+
 lookupTerm :: Text -> CheckerM (Maybe SType)
 lookupTerm name = do
   env <- ask
   pure $ Map.lookup name env.termsEnv
+
+lookupUniversalVar :: Text -> CheckerM Bool
+lookupUniversalVar name = do
+  env <- ask
+  pure $ name `Set.member` env.universalTypeVars
+
 
 newTypeVar :: CheckerM SType
 newTypeVar = do
