@@ -585,7 +585,6 @@ transExpr desiredType x = case x of
   TypeApplication pos expr types -> do
     paramTypes <- for types transType
     funcT <- transExpr Nothing expr -- desired type?
-    debugPrint funcT
     utd <- case funcT of
       UniversalType utd
         | length utd.variables /= length paramTypes -> failWith x ErrorIncorrectNumberOfTypeArguments

@@ -29,13 +29,12 @@ runStellaChecker program = do
     Right ((resType, extensions), state) -> do
       if "#type-reconstruction" `elem` extensions
         then do
-          T.putStrLn $ pp state.constraints
           case solve state.constraints of
             Left (InfinityType c) -> pure $ Left $ mkError c.expr ErrorOccursCheckInfiniteType
             Left (SolvingFailed c) -> pure $ Left $ mkError c.expr $ ErrorUnexpectedTypeForExpression c.lc c.rc
             Right solution -> do
-              T.putStrLn "Solver result:"
-              T.putStrLn . T.intercalate "\n" $ solution <&> \(t1, t2) -> pp t1 <> " = " <> pp t2
+              -- T.putStrLn "Solver result:"
+              -- T.putStrLn . T.intercalate "\n" $ solution <&> \(t1, t2) -> pp t1 <> " = " <> pp t2
               pure $ Right resType
       else pure $ Right resType
   where
