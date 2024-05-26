@@ -31,7 +31,7 @@ runStellaChecker program = do
         then do
           T.putStrLn $ pp state.constraints
           case solve state.constraints of
-            Left (InfinityType c) -> pure $ Left $ mkError c.expr $ ErrorUnexpectedTypeForExpression c.lc c.rc
+            Left (InfinityType c) -> pure $ Left $ mkError c.expr ErrorOccursCheckInfiniteType
             Left (SolvingFailed c) -> pure $ Left $ mkError c.expr $ ErrorUnexpectedTypeForExpression c.lc c.rc
             Right solution -> do
               T.putStrLn "Solver result:"

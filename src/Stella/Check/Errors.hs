@@ -69,6 +69,7 @@ data ErrorType
   | ErrorNotAReference
   | ErrorUnexpectedMemoryAddress
   | ErrorUnexpectedSubtype {- actual -} SType {- excpected -} SType
+  | ErrorOccursCheckInfiniteType
 
 renderErrorTypeOnlyCode ::  ErrorType -> Text
 renderErrorTypeOnlyCode = \case
@@ -89,6 +90,7 @@ renderErrorTypeOnlyCode = \case
   ErrorUnexpectedInjection -> "ERROR_UNEXPECTED_INJECTION"
   ErrorMissingRecordFields{} -> "ERROR_MISSING_RECORD_FIELDS"
   ErrorUnexpectedRecordFields -> "ERROR_UNEXPECTED_RECORD_FIELDS"
+  ErrorOccursCheckInfiniteType -> "ERROR_OCCURS_CHECK_INFINITE_TYPE"
   ErrorUnexpectedFieldAccess{} -> "ERROR_UNEXPECTED_FIELD_ACCESS"
   ErrorTupleIndexOutOfBounds{} -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS"
   ErrorUnexpectedTupleLength{} -> "ERROR_UNEXPECTED_TUPLE_LENGTH"

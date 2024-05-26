@@ -542,12 +542,36 @@ transExpr desiredType x = case x of
       Just t -> pure t
       Nothing -> failWith expr (ErrorUnexpectedFieldAccess name)
   DotTuple pos expr index -> do
-    ttd <- transExpr Nothing expr >>= \case
-      TupleType (TupleTypeData ttd) -> pure ttd
-      _ -> failWith expr ErrorNotATuple
-    case ttd !!? (index - 1) of
-      Just t -> pure t
-      Nothing -> failWith expr (ErrorTupleIndexOutOfBounds index)
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then do
+        transExpr Nothing expr >>= \case
+          TupleType (TupleTypeData ttd) -> case ttd !!? (index - 1) of
+            Just t -> pure t
+            Nothing -> failWith expr (ErrorTupleIndexOutOfBounds index)
+          otherType -> do
+            t1 <- Env.newTypeVar
+            t2 <- Env.newTypeVar
+            if index == 1
+              then do
+                Env.addConstraint
+                  otherType
+                  (TupleType TupleTypeData{tupleTypes = [t1, t2]})
+                  expr
+                pure t1
+              else do
+                Env.addConstraint
+                  otherType
+                  (TupleType TupleTypeData{tupleTypes = [t1, t2]})
+                  expr
+                pure t2
+      else do
+        ttd <- transExpr Nothing expr >>= \case
+          TupleType (TupleTypeData ttd) -> pure ttd
+          _ -> failWith expr ErrorNotATuple
+        case ttd !!? (index - 1) of
+          Just t -> pure t
+          Nothing -> failWith expr (ErrorTupleIndexOutOfBounds index)
   Tuple pos exprs -> do
     types <- traverse (transExpr Nothing) exprs
     pure $ TupleType TupleTypeData
@@ -764,17 +788,27 @@ transExpr desiredType x = case x of
       then Env.addConstraint exprT nat_ x
       else whenTypeNotEqDefError expr exprT nat_
     pure bool_
-  Fix pos expr -> do -- TODO: fix me
-    let
-      desiredTypeForFix = desiredType <&> \t ->
-        FuncType FuncTypeData{argsType = [t], returnType = t}
-    ftd <- transExpr desiredTypeForFix expr >>= \case
-      FuncType ftd
-        | length ftd.argsType == 1 -> pure ftd
-        -- error ErrorNotAFunction only to mach test
-        | otherwise -> failWith expr $ ErrorNotAFunctionText $ "Expected function with one argument, but got " <> pp ftd
-      _ -> failWith expr ErrorNotAFunction
-    pure ftd.returnType
+  Fix pos expr -> do
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then do
+        tv <- Env.newTypeVar
+        let expectedType = FuncType FuncTypeData{argsType = [tv], returnType = tv}
+        eT <- transExpr (Just expectedType) expr
+        Env.addConstraint expectedType eT expr
+        pure tv
+      else do
+        let
+          desiredTypeForFix = desiredType <&> \t ->
+            FuncType FuncTypeData{argsType = [t], returnType = t}
+        ftd <- transExpr desiredTypeForFix expr >>= \case
+          FuncType ftd
+            | length ftd.argsType == 1
+            && (ftd.argsType !! 0) `eqWithSubtyping` ftd.returnType -> pure ftd
+            | length ftd.argsType == 1 -> failWith expr $ ErrorUnexpectedTypeForExpressionText $ "Expected function with the same type for argument, and return expression "
+            -- error ErrorNotAFunction only to mach test
+          _ -> failWith expr ErrorNotAFunction
+        pure ftd.returnType
   NatRec pos expr1 expr2 expr3 -> do
     untilT <- transExpr (Just nat_) expr1
     isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
