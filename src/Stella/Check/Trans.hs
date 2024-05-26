@@ -18,7 +18,7 @@ import Stella.Check.Env (CheckerM)
 import qualified Data.Map as Map
 import Control.Monad.Except ( MonadError(throwError))
 import Stella.Check.Errors (mkError, ErrorType (..))
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (liftIO, MonadIO)
 import Text.Pretty.Simple (pPrint)
 import Data.Functor ((<&>))
 import Control.Monad (join, unless, foldM)
@@ -31,9 +31,9 @@ import Data.Traversable (for)
 import Stella.Check.Utils (Pretty(pp))
 import Stella.Check.Exhaustiveness (checkPatternsExhaustive)
 import qualified Data.Set as Set
-import Control.Monad.Reader.Class (asks)
 import Control.Monad (void)
 import Control.Monad (when)
+import qualified Data.Text as T
 
 type Checker = CheckerM SType
 
@@ -43,7 +43,7 @@ failNotImplemented node = throwError $ mkError node ErrorUnimplementedCase
 failWith :: forall a b. (HasPosition a, Print a) => a -> ErrorType -> CheckerM b
 failWith x err = throwError $ mkError x err
 
-debugPrint :: Show a => a ->  CheckerM ()
+debugPrint :: (Show a, MonadIO m) => a -> m ()
 debugPrint = liftIO . pPrint
 
 debugPrintEnv :: CheckerM ()
@@ -53,8 +53,7 @@ debugPrintEnv = do
 
 whenTypeNotEq :: SType -> SType -> CheckerM () -> CheckerM ()
 whenTypeNotEq actual expected action = do
-  isSubtypingEnabled
-    <- asks (Set.member "#structural-subtyping" . Env.extensions)
+  isSubtypingEnabled <- Env.isSubtypingEnabled
   let
     eqF = if isSubtypingEnabled
         then eqWithSubtyping
@@ -63,8 +62,7 @@ whenTypeNotEq actual expected action = do
 
 whenTypeNotEqDefError :: (HasPosition a, Print a) => a -> SType -> SType -> CheckerM ()
 whenTypeNotEqDefError node actual expected = do
-  isSubtypingEnabled
-    <- asks (Set.member "#structural-subtyping" . Env.extensions)
+  isSubtypingEnabled <- Env.isSubtypingEnabled
   let
     eqF = if isSubtypingEnabled
         then eqWithSubtyping
@@ -82,13 +80,12 @@ whenTypeNotEqDefError node actual expected = do
 
 bottomIfAmbiguousTypesAsBottomEnabled :: Checker -> Checker
 bottomIfAmbiguousTypesAsBottomEnabled action = do
-  isAmbiguousTypesAsBottomEnabled
-    <- asks (Set.member "#ambiguous-type-as-bottom" . Env.extensions)
+  isAmbiguousTypesAsBottomEnabled <- Env.isAmbiguousTypesAsBottomEnabled
   if isAmbiguousTypesAsBottomEnabled
     then pure Bottom
     else action
 
-transProgram :: Program -> Checker
+transProgram :: Program -> CheckerM (SType, [Text])
 transProgram x = case x of
   AProgram pos languagedecl extensions decls -> do
     env <- transDeclSignatures decls
@@ -104,7 +101,7 @@ transProgram x = case x of
         | length ftd.argsType == 1 -> pure ftd
         | otherwise -> failWith x (ErrorIncorrectArityOfMain $ length ftd.argsType)
       _ -> failWith x ErrorMissingMain
-    pure mainFunction.returnType
+    pure (mainFunction.returnType, extensionsList)
 
 data TransDeclData = TransDeclData
   { typeAliases :: [(Text, SType)]
@@ -169,13 +166,18 @@ transDecl :: Decl -> CheckerM (Maybe SType)
 transDecl x = case x of
   DeclFun pos annotations (StellaIdent name) paramdecls returntype throwtype decls expr -> do
     env <- transDeclSignatures decls
-    paramsTypes <- traverse transParamDecl paramdecls
-    retType <- transReturnType returntype
-    let envWithParams = Env.addTerms paramsTypes env
+    ftd <- lookupTermThrow x name >>= \case
+      FuncType ftd -> pure ftd
+      _ -> error $ "Impossible happened: not found function " <> T.unpack name <> "after transDeclSignatures"
+
+    let envWithParams = Env.addTerms (zip (transParamDeclName <$> paramdecls) ftd.argsType) env
     exprT <- Env.withEnv envWithParams $ do
       traverse_ transDecl decls
-      transExpr (Just retType) expr
-    whenTypeNotEqDefError expr exprT retType
+      transExpr (Just ftd.returnType) expr
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint exprT ftd.returnType expr
+      else whenTypeNotEqDefError expr exprT ftd.returnType
     pure $ Just exprT
   DeclFunGeneric pos annotations (StellaIdent name) stellaidents paramdecls returntype throwtype decl expr -> failNotImplemented x
   DeclTypeAlias pos (StellaIdent name) type_ -> Just <$> transType type_
@@ -194,6 +196,10 @@ transAnnotation x = case x of
 transParamDecl :: ParamDecl -> CheckerM (Text, SType)
 transParamDecl x = case x of
   AParamDecl pos (StellaIdent name) type_ -> (name,) <$> transType type_
+
+transParamDeclName :: ParamDecl -> Text
+transParamDeclName x = case x of
+  AParamDecl pos (StellaIdent name) _ -> name
 
 transReturnType :: ReturnType -> Checker
 transReturnType x = case x of
@@ -252,7 +258,9 @@ transType x = case x of
     innerType <- transType type_
     pure $ RefType innerType
   TypeVar pos (StellaIdent name) -> pure $ TypeVarType name
-  TypeAuto{} -> failNotImplemented x
+  TypeAuto{} -> do
+    v <- Env.newTypeVar
+    pure v
 
 transMatchCase :: Maybe SType -> SType -> MatchCase -> Checker
 transMatchCase desiredType matchType x = case x of
@@ -373,17 +381,19 @@ transExpr desiredType x = case x of
       RefType innerType -> pure innerType
       _ -> failWith x ErrorNotAReference
     expr2Type <- transExpr (Just t) expr2
-    debugPrint t
-    debugPrint expr2
-    debugPrint expr2Type
     whenTypeNotEqDefError expr1 expr2Type t
     pure unit_
   If pos expr1 expr2 expr3 -> do
     expr1Type <- transExpr (Just bool_) expr1
-    whenTypeNotEqDefError expr1 expr1Type bool_
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint expr1Type bool_ expr1
+      else whenTypeNotEqDefError expr1 expr1Type bool_
     expr2Type <- transExpr desiredType expr2
     expr3Type <- transExpr (Just expr2Type) expr3
-    whenTypeNotEqDefError expr3 expr2Type expr3Type
+    if isTypeReconstructionEnabled
+      then Env.addConstraint expr2Type expr3Type expr3
+      else whenTypeNotEqDefError expr3 expr2Type expr3Type
     pure expr2Type
   Let pos patternbindings expr -> do
     let
@@ -415,18 +425,29 @@ transExpr desiredType x = case x of
   TypeAsc pos expr type_ -> do
     t <- transType type_
     exprT <- transExpr (Just t) expr
-    whenTypeNotEqDefError expr t exprT
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint t exprT expr
+      else whenTypeNotEqDefError expr t exprT
     pure exprT
   TypeCast pos expr type_ -> do
     void $ transExpr Nothing expr
     transType type_
   Abstraction pos paramdecls expr -> do
-    mDesiredRetType <- case desiredType of
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    mDesiredFtd <- case desiredType of
       Nothing -> pure Nothing
-      Just (FuncType ftd) -> pure $ Just ftd.returnType
+      Just (FuncType ftd) -> pure $ Just ftd
       Just _ -> pure Nothing
-    paramsTypes <- traverse transParamDecl paramdecls
-    retType <- Env.withTerms paramsTypes $ transExpr mDesiredRetType expr
+    paramsTypes <- for (zip [0..] paramdecls) $ \(ix, decl) -> do
+      (name, t') <- transParamDecl decl
+      let desiredArgType = mDesiredFtd >>= \ftd -> ftd.argsType !!? ix
+      when isTypeReconstructionEnabled $ do
+        case desiredArgType of
+          Just desiredT -> Env.addConstraint desiredT t' x
+          _ -> pure ()
+      pure (name, t')
+    retType <- Env.withTerms paramsTypes $ transExpr (returnType <$> mDesiredFtd) expr
     let
       funcT = FuncType FuncTypeData
         { argsType = snd <$> paramsTypes
@@ -481,17 +502,37 @@ transExpr desiredType x = case x of
       RefType innerType -> pure innerType
       _ -> failWith x ErrorNotAReference
   Application pos func args -> do
-    funcType <- transExpr Nothing func >>= \case
-      FuncType ftd
-        | length ftd.argsType /= length args
-        -> failWith x (ErrorIncorrectNumberOfArguments $ length args)
-        | otherwise -> pure ftd
-      _ -> failWith func ErrorNotAFunction
-    argsWithTypes <-
-      for (zip args funcType.argsType) $ \(expr, t) ->
-        (expr,) <$> transExpr (Just t) expr
-    -- some duplication of type check logic. TODO: rewrite in better times
-    checkFunctionApplication x funcType argsWithTypes
+    funcType <- transExpr Nothing func
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then do
+        desiredFtd <- case funcType of
+          FuncType ftd -- useful?
+            | length ftd.argsType /= length args
+            -> failWith x (ErrorIncorrectNumberOfArguments $ length args)
+            | otherwise -> pure (Just ftd)
+          _ -> pure Nothing
+        funcRetTypeVar <- Env.newTypeVar
+        newArgsTypes <- for (zip [0..] args) $ \(ix, expr) -> do
+          let desiredArgType = desiredFtd >>= \ftd -> ftd.argsType !!? ix
+          argType <- transExpr desiredArgType expr
+          argTypeVar <- Env.newTypeVar
+          Env.addConstraint argType argTypeVar expr
+          pure argTypeVar
+        Env.addConstraint funcType (FuncType $ FuncTypeData newArgsTypes funcRetTypeVar) x
+        pure funcRetTypeVar
+      else do
+        ftd <- case funcType of
+          FuncType ftd
+            | length ftd.argsType /= length args
+            -> failWith x (ErrorIncorrectNumberOfArguments $ length args)
+            | otherwise -> pure ftd
+          _ -> failWith func ErrorNotAFunction
+        argsWithTypes <-
+          for (zip args ftd.argsType) $ \(expr, t) ->
+            (expr,) <$> transExpr (Just t) expr
+        -- some duplication of type check logic. TODO: rewrite in better times
+        checkFunctionApplication x ftd argsWithTypes
   TypeApplication pos expr types -> failNotImplemented x
   DotRecord pos expr (StellaIdent name) -> do
     rtd <- transExpr Nothing expr >>= \case
@@ -529,37 +570,71 @@ transExpr desiredType x = case x of
   ConsList pos expr1 expr2 -> do
     expr1T <- transExpr Nothing expr1
     expr2T <- transExpr (Just $ ListType expr1T) expr2
-    whenTypeNotEqDefError expr1 expr2T (ListType expr1T)
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint (ListType expr1T) expr2T x
+      else whenTypeNotEqDefError expr1 expr2T (ListType expr1T)
     pure $ ListType expr1T
   Head pos expr -> do
     listInnerType <- transExpr Nothing expr >>= \case
       ListType listInnerType -> pure listInnerType
-      _ -> failWith expr ErrorNotAList
+      otherType ->  do
+        isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+        if isTypeReconstructionEnabled
+          then do
+            tv <- Env.newTypeVar
+            Env.addConstraint otherType (ListType tv) x
+            pure tv
+        else failWith expr ErrorNotAList
     pure listInnerType
   IsEmpty pos expr -> do
     transExpr Nothing expr >>= \case
       ListType _ -> pure ()
-      _ -> failWith expr ErrorNotAList
+      otherType ->  do
+        isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+        if isTypeReconstructionEnabled
+          then do
+            tv <- Env.newTypeVar
+            Env.addConstraint otherType (ListType tv) x
+        else failWith expr ErrorNotAList
     pure bool_
   Tail pos expr -> do
     listType <- transExpr Nothing expr >>= \case
       lt@(ListType _) -> pure lt
-      _ -> failWith expr ErrorNotAList
+      otherType ->  do
+        isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+        if isTypeReconstructionEnabled
+          then do
+            tv <- Env.newTypeVar
+            Env.addConstraint otherType (ListType tv) x
+            pure $ ListType tv
+          else failWith expr ErrorNotAList
     pure listType
   List pos exprs -> do
+    let
+      desiredListInnerType = case desiredType of
+        Just (ListType lt) -> Just lt
+        _ -> Nothing
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
     case exprs of
       -- empty list, should infer type
-      [] -> case desiredType of
-        Just (ListType t) -> pure (ListType t)
-        Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got list"
-        Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
-         $ failWith x ErrorAmbiguousList
+      [] -> do
+        if isTypeReconstructionEnabled
+          then do
+            ListType <$> Env.newTypeVar
+          else case desiredType of
+            Just (ListType t) -> pure (ListType t)
+            Just dt -> failWith x $ ErrorUnexpectedTypeForExpressionText $ "Expected " <> pp dt <> "but got list"
+            Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
+              $ failWith x ErrorAmbiguousList
       (e:es) -> do
         -- with some manipulations we can understand desired type
-        eT <- transExpr Nothing e
+        eT <- transExpr desiredListInnerType e
         for_ es $ \e' -> do
           e'T <- transExpr Nothing e'
-          whenTypeNotEqDefError e' e'T eT
+          if isTypeReconstructionEnabled
+            then Env.addConstraint e'T eT e'
+            else whenTypeNotEqDefError e' e'T eT
         pure $ ListType eT
   Panic pos -> case desiredType of
     Just t -> pure t
@@ -571,7 +646,10 @@ transExpr desiredType x = case x of
       Nothing -> failWith x ErrorExceptionTypeNotDeclared
       Just excT -> do
         exprT <- transExpr (Just excT) expr
-        whenTypeNotEqDefError expr exprT excT
+        isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+        if isTypeReconstructionEnabled
+          then Env.addConstraint exprT excT x
+          else whenTypeNotEqDefError expr exprT excT
     case desiredType of
       Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
         $ failWith x ErrorAmbiguousThrowType
@@ -585,12 +663,18 @@ transExpr desiredType x = case x of
     newTerms <- transPattern excT pattern_
     catchT <- Env.withTerms newTerms $ do
       transExpr desiredType expr2
-    whenTypeNotEqDefError x exprT catchT
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint exprT catchT x
+      else whenTypeNotEqDefError x exprT catchT
     pure exprT
   TryWith pos expr1 expr2 -> do
     t1 <- transExpr desiredType expr1
     t2 <- transExpr desiredType expr2
-    whenTypeNotEqDefError expr2 t1 t2
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint t1 t2 x
+      else whenTypeNotEqDefError expr2 t1 t2
     pure t1
   TryCastAs pos tryExpr typ pattern patExpr withExpr -> do
     void $ transExpr Nothing tryExpr
@@ -599,41 +683,88 @@ transExpr desiredType x = case x of
     patType <- Env.withTerms patternTerms $
       transExpr desiredType patExpr
     fallbackType <- transExpr desiredType withExpr
-    whenTypeNotEqDefError x patType fallbackType
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint patType fallbackType x
+      else whenTypeNotEqDefError x patType fallbackType
     pure fallbackType
-  Inl pos expr -> case desiredType of
-    Just (SumType std) -> do
-      exprT <- transExpr (Just std.leftType) expr
-      whenTypeNotEqDefError expr exprT std.leftType
-      pure $ SumType std
-    Just dt -> failWith x ErrorUnexpectedInjection
-    Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
-      $ failWith x ErrorAmbiguousSumType
-  Inr pos expr -> case desiredType of
-    Just (SumType std) -> do
-      exprT <- transExpr (Just std.rightType) expr
-      whenTypeNotEqDefError expr exprT std.rightType
-      pure $ SumType std
-    Just dt -> failWith x ErrorUnexpectedInjection
-    Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
-      $ failWith x ErrorAmbiguousSumType
+  Inl pos expr -> do
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then do
+        let
+          dt = desiredType >>= \case
+            SumType std -> Just std
+            _ -> Nothing
+        exprT <- transExpr (leftType <$> dt) expr
+        rt <- case dt of
+          Just dt' -> pure dt'.rightType
+          Nothing -> Env.newTypeVar
+        pure $ SumType $ SumTypeData
+          { leftType = exprT
+          , rightType = rt
+          }
+      else case desiredType of  -- TODO: fix me
+        Just (SumType std) -> do
+          exprT <- transExpr (Just std.leftType) expr
+          whenTypeNotEqDefError expr exprT std.leftType
+          pure $ SumType std
+        Just dt -> failWith x ErrorUnexpectedInjection
+        Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
+          $ failWith x ErrorAmbiguousSumType
+  Inr pos expr -> do
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then do
+        let
+          dt = desiredType >>= \case
+            SumType std -> Just std
+            _ -> Nothing
+        exprT <- transExpr (rightType <$> dt) expr
+        lt <- case dt of
+          Just dt' -> pure dt'.leftType
+          Nothing -> Env.newTypeVar
+        pure $ SumType $ SumTypeData
+          { leftType = lt
+          , rightType = exprT
+          }
+      else case desiredType of
+        Just (SumType std) -> do
+          exprT <- transExpr (Just std.rightType) expr
+          whenTypeNotEqDefError expr exprT std.rightType
+          pure $ SumType std
+        Just dt -> failWith x ErrorUnexpectedInjection
+        Nothing -> bottomIfAmbiguousTypesAsBottomEnabled
+          $ failWith x ErrorAmbiguousSumType
   Succ pos expr -> do
     exprT <- transExpr (Just nat_) expr
-    whenTypeNotEqDefError expr exprT nat_
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint exprT nat_ x
+      else whenTypeNotEqDefError expr exprT nat_
     pure nat_
   LogicNot pos expr -> do
     exprT <- transExpr (Just bool_) expr
-    whenTypeNotEqDefError expr exprT bool_
-    pure nat_
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint exprT bool_ x
+      else whenTypeNotEqDefError expr exprT bool_
+    pure bool_
   Pred pos expr ->  do
     exprT <- transExpr (Just nat_) expr
-    whenTypeNotEqDefError expr exprT nat_
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint exprT nat_ x
+      else whenTypeNotEqDefError expr exprT nat_
     pure nat_
   IsZero pos expr -> do
     exprT <- transExpr (Just nat_) expr
-    whenTypeNotEqDefError expr exprT nat_
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint exprT nat_ x
+      else whenTypeNotEqDefError expr exprT nat_
     pure bool_
-  Fix pos expr -> do
+  Fix pos expr -> do -- TODO: fix me
     let
       desiredTypeForFix = desiredType <&> \t ->
         FuncType FuncTypeData{argsType = [t], returnType = t}
@@ -646,7 +777,10 @@ transExpr desiredType x = case x of
     pure ftd.returnType
   NatRec pos expr1 expr2 expr3 -> do
     untilT <- transExpr (Just nat_) expr1
-    whenTypeNotEqDefError expr1 untilT nat_
+    isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+    if isTypeReconstructionEnabled
+      then Env.addConstraint untilT nat_ x
+      else whenTypeNotEqDefError expr1 untilT nat_
     startT <- transExpr desiredType expr2
     let
       masterFunctionT = FuncType $ FuncTypeData
@@ -657,7 +791,9 @@ transExpr desiredType x = case x of
           }
         }
     funcT <- transExpr desiredType expr3
-    whenTypeNotEqDefError expr3 funcT masterFunctionT
+    if isTypeReconstructionEnabled
+      then Env.addConstraint funcT masterFunctionT x
+      else whenTypeNotEqDefError expr3 funcT masterFunctionT
     pure startT
   Fold pos type_ expr -> failNotImplemented x
   Unfold pos type_ expr -> failNotImplemented x
@@ -711,25 +847,40 @@ transTyping x = case x of
 compareNatsOperator :: Expr -> Expr -> CheckerM SType
 compareNatsOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just nat_) expr1
-  whenTypeNotEqDefError expr1 expr1Type nat_
+  isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+  if isTypeReconstructionEnabled
+    then Env.addConstraint expr1Type nat_ expr1
+    else whenTypeNotEqDefError expr1 expr1Type nat_
   expr2Type <- transExpr (Just nat_) expr1
-  whenTypeNotEqDefError expr1 expr2Type nat_
+  if isTypeReconstructionEnabled
+    then Env.addConstraint expr2Type nat_ expr2
+    else whenTypeNotEqDefError expr2 expr2Type nat_
   pure bool_
 
 arithmeticNatsOperator :: Expr -> Expr -> CheckerM SType
 arithmeticNatsOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just nat_) expr1
-  whenTypeNotEqDefError expr1 expr1Type nat_
-  expr2Type <- transExpr (Just nat_) expr1
-  whenTypeNotEqDefError expr1 expr2Type nat_
+  isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+  if isTypeReconstructionEnabled
+    then Env.addConstraint expr1Type nat_ expr1
+    else whenTypeNotEqDefError expr1 expr1Type nat_
+  expr2Type <- transExpr (Just nat_) expr2
+  if isTypeReconstructionEnabled
+    then Env.addConstraint expr2Type nat_ expr2
+    else whenTypeNotEqDefError expr2 expr2Type nat_
   pure nat_
 
 logicOperator :: Expr -> Expr -> CheckerM SType
 logicOperator expr1 expr2 =  do
   expr1Type <- transExpr (Just bool_) expr1
-  whenTypeNotEqDefError expr1 expr1Type bool_
+  isTypeReconstructionEnabled <- Env.isTypeReconstructionEnabled
+  if isTypeReconstructionEnabled
+    then Env.addConstraint expr1Type bool_ expr1
+    else whenTypeNotEqDefError expr1 expr1Type bool_
   expr2Type <- transExpr (Just bool_) expr1
-  whenTypeNotEqDefError expr1 expr2Type bool_
+  if isTypeReconstructionEnabled
+    then Env.addConstraint expr2Type bool_ expr2
+    else whenTypeNotEqDefError expr2 expr2Type bool_
   pure bool_
 
 checkFunctionApplication :: {- Application expr -} Expr -> FuncTypeData -> [(Expr, SType)] -> CheckerM SType

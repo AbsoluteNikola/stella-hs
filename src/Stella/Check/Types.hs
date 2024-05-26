@@ -84,6 +84,7 @@ data SType
   | RefType SType
   | Top
   | Bottom
+  | STypeVar Int
   deriving (Eq, Show)
 
 unit_, bool_, nat_ :: SType
@@ -96,7 +97,7 @@ instance Pretty SType where
     FuncType ftd -> pp ftd
     ListType t -> "[" <> pp t <> "]"
     SimpleType t -> pp t
-    TypeVarType t -> "type " <> t
+    TypeVarType t -> "type " <> t -- todo: fix me
     TupleType t -> pp t
     RecordType t -> pp t
     SumType t -> pp t
@@ -104,6 +105,7 @@ instance Pretty SType where
     RefType t -> "&" <> pp t
     Top -> "Top"
     Bottom -> "Bottom"
+    STypeVar n -> "?T" <> pp n
 
 eqWithSubtyping :: SType -> SType -> Bool
 

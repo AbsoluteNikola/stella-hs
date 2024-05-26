@@ -8,6 +8,9 @@ import Control.Monad.Except
 import Stella.Check.Errors (StellaError)
 import Control.Applicative ((<|>))
 import qualified Data.Set as Set
+import Control.Monad.State (StateT, MonadState(..), modify)
+import Stella.Check.Constraints (Constraint (Constraint))
+import Stella.Ast.AbsSyntax (Expr)
 
 data Env = Env
   { typesEnv :: Map.Map Text SType
@@ -16,8 +19,21 @@ data Env = Env
   , extensions :: Set.Set Text
   } deriving (Show)
 
+data State = State
+  { typeVarNum :: Int
+  , constraints :: [Constraint]
+  }
+
+defState :: State
+defState = State 0 []
+
 defEnv :: Env
-defEnv = Env Map.empty Map.empty Nothing Set.empty
+defEnv = Env
+  { typesEnv = Map.empty
+  , termsEnv = Map.empty
+  , exceptionType = Nothing
+  , extensions = Set.empty
+  }
 
 addTerms :: [(Text, SType)] -> Env -> Env
 addTerms terms env = env{termsEnv = newTerms}
@@ -32,8 +48,8 @@ concatEnv e1 e2 = Env
     , extensions = e1.extensions <> e2.extensions
     }
 
-newtype CheckerM a = CheckerM { unCheckerM :: ReaderT Env (ExceptT StellaError IO) a}
-  deriving (Functor, Applicative, Monad, MonadReader Env, MonadError StellaError, MonadIO)
+newtype CheckerM a = CheckerM { unCheckerM :: ReaderT Env (StateT State (ExceptT StellaError IO)) a}
+  deriving (Functor, Applicative, Monad, MonadReader Env, MonadError StellaError, MonadIO, MonadState State)
 
 withEnv :: Env -> CheckerM a -> CheckerM a
 withEnv env = local (`concatEnv` env)
@@ -45,3 +61,26 @@ lookupTerm :: Text -> CheckerM (Maybe SType)
 lookupTerm name = do
   env <- ask
   pure $ Map.lookup name env.termsEnv
+
+newTypeVar :: CheckerM SType
+newTypeVar = do
+  (typeVarNum -> curIndex) <- get
+  modify $ \s -> s{typeVarNum = curIndex + 1}
+  pure $ STypeVar curIndex
+
+isSubtypingEnabled :: CheckerM Bool
+isSubtypingEnabled = asks (Set.member "#structural-subtyping" . extensions)
+
+isAmbiguousTypesAsBottomEnabled :: CheckerM Bool
+isAmbiguousTypesAsBottomEnabled = asks (Set.member "#ambiguous-type-as-bottom" . extensions)
+
+isTypeReconstructionEnabled :: CheckerM Bool
+isTypeReconstructionEnabled = asks (Set.member "#type-reconstruction" . extensions)
+
+isUniversalTypesEnabled :: CheckerM Bool
+isUniversalTypesEnabled = asks (Set.member "#universal-types" . extensions)
+
+addConstraint :: SType -> SType -> Expr -> CheckerM ()
+addConstraint t1 t2 expr = do
+  let c = Constraint t1 t2 expr
+  modify $ \s -> s{constraints = c : s.constraints}
