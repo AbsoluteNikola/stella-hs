@@ -30,6 +30,7 @@ library
         Stella.Ast.LexSyntax
         Stella.Ast.ParSyntax
         Stella.Ast.PrintSyntax
+        Stella.Check.Constraints
         Stella.Check.Trans
         Stella.Check.Errors
         Stella.Check.Types

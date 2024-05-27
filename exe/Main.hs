@@ -51,8 +51,8 @@ run v p s =
 
 showTree :: Int -> Program -> IO ()
 showTree v tree = do
-  putStrV v $ "\n[Abstract Syntax]\n\n"
-  pPrint tree
+  -- putStrV v $ "\n[Abstract Syntax]\n\n"
+  -- pPrint tree
   putStrV v $ "\n[Linearized tree]\n\n" ++ printTree tree
   putStrV v $ "\n[Type checker result]\n\n"
   typeCheckerRes <- runStellaChecker tree
