@@ -69,6 +69,10 @@ data ErrorType
   | ErrorNotAReference
   | ErrorUnexpectedMemoryAddress
   | ErrorUnexpectedSubtype {- actual -} SType {- excpected -} SType
+  | ErrorOccursCheckInfiniteType
+  | ErrorNotAGenericFunction
+  | ErrorIncorrectNumberOfTypeArguments
+  | ErrorUndefinedTypeVariable Text
 
 renderErrorTypeOnlyCode ::  ErrorType -> Text
 renderErrorTypeOnlyCode = \case
@@ -76,6 +80,9 @@ renderErrorTypeOnlyCode = \case
   ErrorUnexpectedTypeForExpressionText{} -> "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION"
   ErrorMissingMain -> "ERROR_MISSING_MAIN"
   ErrorUndefinedVariable -> "ERROR_UNDEFINED_VARIABLE"
+  ErrorNotAGenericFunction -> "ERROR_NOT_A_GENERIC_FUNCTION"
+  ErrorIncorrectNumberOfTypeArguments -> "ERROR_INCORRECT_NUMBER_OF_TYPE_ARGUMENTS"
+  ErrorUndefinedTypeVariable{} -> "ERROR_UNDEFINED_TYPE_VARIABLE"
   ErrorNotAFunction -> "ERROR_NOT_A_FUNCTION"
   ErrorNotAFunctionText{} -> "ERROR_NOT_A_FUNCTION"
   ErrorNotATuple -> "ERROR_NOT_A_TUPLE"
@@ -89,6 +96,7 @@ renderErrorTypeOnlyCode = \case
   ErrorUnexpectedInjection -> "ERROR_UNEXPECTED_INJECTION"
   ErrorMissingRecordFields{} -> "ERROR_MISSING_RECORD_FIELDS"
   ErrorUnexpectedRecordFields -> "ERROR_UNEXPECTED_RECORD_FIELDS"
+  ErrorOccursCheckInfiniteType -> "ERROR_OCCURS_CHECK_INFINITE_TYPE"
   ErrorUnexpectedFieldAccess{} -> "ERROR_UNEXPECTED_FIELD_ACCESS"
   ErrorTupleIndexOutOfBounds{} -> "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS"
   ErrorUnexpectedTupleLength{} -> "ERROR_UNEXPECTED_TUPLE_LENGTH"
@@ -143,6 +151,7 @@ renderErrorType t = case t of
     renderErrorTypeOnlyCode t <> ": \n" <>
     "Expected type: " <> pp expected <> "\n" <>
     "But got: " <> pp actual
+  ErrorUndefinedTypeVariable name -> renderErrorTypeOnlyCode t <> ": " <> name
   ErrorTupleIndexOutOfBounds index -> renderErrorTypeOnlyCode t <> ": " <> T.pack (show index)
   ErrorDuplicateRecordFields names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
   ErrorDuplicatePatternVariable names -> renderErrorTypeOnlyCode t <> ": " <> T.intercalate ", " names
